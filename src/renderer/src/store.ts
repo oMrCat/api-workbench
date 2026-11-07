@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 import type { AppInfo, AppSettings, ModelCatalog, ProviderConfig, RunEvent, TestRunRecord } from '@shared/types'
 
-export type Page = 'overview' | 'providers' | 'models' | 'test' | 'history' | 'settings'
+export type Page = 'overview' | 'providers' | 'models' | 'test' | 'compare' | 'history' | 'settings'
 
 export interface RunningTest {
   runId: string

@@ -64,7 +64,7 @@ export class TestRunner {
     apiKey: string | undefined,
     secrets: RunSecrets,
     settings: { streamLogLimit: number; streamIdleTimeoutMs: number },
-    opts?: { runId?: string }
+    opts?: { runId?: string; compareId?: string }
   ): Promise<TestRunRecord> {
     // 优先使用调用方(渲染进程)预生成的 runId,保证 UI 的取消按钮能按 ID 匹配
     const runId =
@@ -94,6 +94,7 @@ export class TestRunner {
       ok: false,
       phase: 'unknown',
       timing: {},
+      ...(opts?.compareId ? { compareId: opts.compareId } : {})
     }
 
     // 捕获脱敏后的请求（原始请求只在此处捕获，密钥不落盘）

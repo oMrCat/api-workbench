@@ -15,6 +15,7 @@ import { OpenAiChatAdapter } from './protocols/openai-chat'
 import { AnthropicMessagesAdapter } from './protocols/anthropic-messages'
 import type { ProtocolAdapter } from './protocols/types'
 import { TestRunner } from './runner/test-runner'
+import { recordCapabilityVerification } from './capability'
 import { classifyFetchError, timedFetch } from './net/http-client'
 import { plainHttpWarning } from '@shared/url'
 import { buildCurlSample, buildJsonReport, buildMarkdownReport } from './report/export'
@@ -189,11 +190,13 @@ function registerIpc(): void {
       apiKey,
       { knownSecrets: secrets.allSecretValues() },
       { streamLogLimit: settings.streamLogLimit, streamIdleTimeoutMs: settings.streamIdleTimeoutMs },
-      { runId: p.runId }
+      { runId: p.runId, compareId: p.compareId }
     )
     if (settings.persistHistory) {
       store.appendHistory([record], settings.historyLimit, true)
     }
+    // 能力验证回写:成功的测试把 chat/tools 写入模型目录(幂等,失败/取消不写)
+    recordCapabilityVerification(store, record)
     return record
   })
 

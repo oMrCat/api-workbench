@@ -46,6 +46,7 @@ export const testParamsSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   streamIncludeUsage: z.boolean().optional(),
   toolsEnabled: z.boolean().optional(),
+  compareId: z.string().regex(/^cmp-[a-zA-Z0-9-]{1,60}$/).optional(),
   runId: z
     .string()
     .regex(/^run-[a-zA-Z0-9-]{1,56}$/)

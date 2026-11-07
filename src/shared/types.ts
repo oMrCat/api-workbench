@@ -178,6 +178,8 @@ export interface TestRunRecord {
   toolSteps?: ToolCallStep[]
   /** 工具循环轮数(1 = 模型直接回答,未调用工具) */
   toolRounds?: number
+  /** 多服务商对比分组 ID(P1) */
+  compareId?: string
 }
 
 export type FailurePhase =
@@ -207,6 +209,8 @@ export interface TestParams {
   runId?: string
   /** 工具调用测试(P1):启用后注入固定示例工具并自动回传结果 */
   toolsEnabled?: boolean
+  /** 多服务商对比(P1):同一轮对比的分组 ID,写入记录便于历史中识别 */
+  compareId?: string
 }
 
 /** 运行过程中推送给渲染进程的事件 */

@@ -133,7 +133,7 @@ export async function runUiTest(win: BrowserWindow): Promise<void> {
           const list = await window.api.listProviders();
           let n = 0;
           for (const p of list) {
-            if (p.name === '界面测试服务商' || p.id === 'smoke-p') { await window.api.deleteProvider(p.id); n++; }
+            if (p.name === '界面测试服务商' || p.id === 'smoke-p' || p.id === 'cmp-second') { await window.api.deleteProvider(p.id); n++; }
           }
           await window.api.clearHistory();
           const s = await window.api.getSettings();
@@ -328,8 +328,74 @@ export async function runUiTest(win: BrowserWindow): Promise<void> {
       return `截图见 ${await shot('S13b-tools-loop')}`
     })
 
-    // S14 错误模型 → 诊断面板(先恢复非流式,保证按钮文案匹配)
+    // S14b 多服务商对比(mock 上建两个服务商,同提示词对比)
+    await scenario('S14b-多服务商对比', async () => {
+      try {
+      const port = await evalJs<number>(`(await window.api.mockStatus()).port`)
+      // 第二个服务商(对比需要 ≥2);经 API 创建后需刷新页面让 zustand 重新拉取
+      await evalJs(
+        `(async () => {
+          const list = await window.api.listProviders();
+          if (!list.some((p) => p.id === 'cmp-second')) {
+            await window.api.saveProvider({
+              id: 'cmp-second', name: '对比第二家', baseUrl: 'http://127.0.0.1:' + ${port},
+              protocol: 'openai-chat', headers: [], timeoutMs: 15000,
+              createdAt: Date.now(), updatedAt: Date.now()
+            });
+            await window.api.setSecret('cmp-second', 'sk-mock-compare-key');
+          }
+          return 'ready';
+        })()`
+      )
+      // 主进程侧 reload(executeJavaScript 触发导航会销毁执行上下文导致 promise 拒绝)
+      win.webContents.reload()
+      await new Promise<void>((resolve) => {
+        win.webContents.once('did-finish-load', () => resolve())
+        setTimeout(resolve, 8000)
+      })
+      for (let i = 0; i < 40; i++) {
+        try {
+          if (await win.webContents.executeJavaScript(`document.getElementById('root')?.children.length > 0`)) break
+        } catch { /* 重试 */ }
+        await sleep(200)
+      }
+      console.log('[uitest] S14b: reload 完成,重装助手')
+      await evalRaw(pageHelpers)
+      console.log('[uitest] S14b: 助手就绪,进入对比页')
+      await evalJs(`window.__t.nav('对比')`)
+      await evalJs(`window.__t.waitFor('选择服务商', 5000)`)
+      // 勾选两个服务商复选框(前两个)
+      await evalJs(
+        `(() => { [...document.querySelectorAll('table.list tbody tr input[type=checkbox]')].slice(0,2).forEach(cb => { if (!cb.checked) cb.click(); }); return 'checked'; })()`
+      )
+      // 各自填模型
+      await evalJs(
+        `(async () => {
+          const inputs = [...document.querySelectorAll('table.list tbody input[type=text]')];
+          for (const inp of inputs) {
+            const proto = HTMLInputElement.prototype;
+            Object.getOwnPropertyDescriptor(proto, 'value').set.call(inp, 'mock-chat-mini');
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return 'filled';
+        })()`
+      )
+      await evalJs(`window.__t.clickText('开始对比')`)
+      await evalJs(`window.__t.waitFor('对比完成', 20000)`)
+      const ok = await evalJs<boolean>(
+        `window.__t.has('成功') && document.querySelectorAll('table.list tbody tr').length >= 2 && window.__t.has('ms')`
+      )
+      if (!ok) throw new Error('对比结果表缺失或不完整')
+      return `截图见 ${await shot('S14b-compare')}`
+      } finally {
+        // 无论成败都清掉对比用第二家,避免残留死端口污染后续运行
+        await evalJs(`(async () => { const l = await window.api.listProviders(); for (const p of l) if (p.id === 'cmp-second') await window.api.deleteProvider(p.id); return 'cleaned'; })()`).catch(() => {})
+      }
+    })
+
+    // S14 错误模型 → 诊断面板(先回测试页并恢复非流式)
     await scenario('S14-错误场景诊断面板', async () => {
+      await evalJs(`window.__t.nav('请求测试')`)
       await evalJs(`window.__t.toggleStream(false)`)
       await evalJs(`window.__t.fillPlaceholder('如 mock-chat-mini', 'mock-500')`)
       await evalJs(`window.__t.clickText('发起请求')`)
@@ -343,6 +409,7 @@ export async function runUiTest(win: BrowserWindow): Promise<void> {
 
     // S15 防重复点击(自行确保流式开,避免依赖前序场景状态)
     await scenario('S15-防重复点击', async () => {
+      await evalJs(`window.__t.nav('请求测试')`)
       await evalJs(`window.__t.toggleStream(true)`)
       await evalJs(`window.__t.fillPlaceholder('如 mock-chat-mini', 'mock-slow')`)
       await evalJs(`window.__t.clickText('发起流式请求')`)

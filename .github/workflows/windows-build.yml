@@ -67,6 +67,21 @@ jobs:
           # 无签名证书：electron-builder 显式跳过签名
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      - name: 打包产物冒烟验证（win-unpacked 实际运行 --smoke）
+        shell: pwsh
+        run: |
+          $exe = "dist/win-unpacked/API Workbench.exe"
+          if (-not (Test-Path $exe)) { Write-Error "找不到 $exe"; exit 1 }
+          $ok = $false
+          foreach ($i in 1..2) {
+            Write-Host "smoke attempt $i"
+            & $exe --smoke
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "attempt $i failed (exit $LASTEXITCODE)，可能为 Defender 首扫延迟，重试..."
+            Start-Sleep -Seconds 10
+          }
+          if (-not $ok) { Write-Error "打包产物冒烟验证失败"; exit 1 }
+
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
@@ -96,6 +111,10 @@ jobs:
 
       - name: 构建与打包（ad-hoc，不签名不公证）
         run: npm run dist:mac
+
+      - name: 打包产物冒烟验证（.app 实际运行 --smoke）
+        run: |
+          "./dist/mac-arm64/API Workbench.app/Contents/MacOS/API Workbench" --smoke
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4

@@ -157,6 +157,16 @@ export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-
 
 真实服务商的工具调用:**未验证**(无真实 Key)。
 
+## P1:多服务商对比 + 能力验证回写(已实现)
+
+**执行命令**:`npm test`(新增 6 项能力回写单测)+ `npm run uitest`(新增对比场景 S14b)
+
+**结果**:**136/136 自动化测试 + 23/23 UI 场景全部通过,真实执行**(2026-11-07)。
+对比页截图目检:两家服务商并排结果表(状态/HTTP/耗时/响应头/usage/"最快"徽章)渲染正确。
+
+- 能力回写:成功测试把 `chat`(及全部成功的 `tools`)写入模型目录,幂等去重;目录外模型以 manual 落盘;失败/取消不写
+- 对比:同一提示词并发(≤5 家,用户主动)发多个服务商,结果表含"最快"标记,compareId 分组落入诊断历史
+
 ## CI 构建（Windows / macOS）
 
 **状态：✅ 已验证。** 仓库已推送 GitHub（https://github.com/oMrCat/api-workbench，private），
@@ -165,9 +175,14 @@ run [42367661321](https://github.com/oMrCat/api-workbench/actions/runs/423676613
 | Job | 结果 | 耗时 |
 | --- | --- | --- |
 | 类型检查 + 测试 (ubuntu-latest) | ✅ | 32s |
-| 类型检查 + 测试 (windows-latest) | ✅ **103 项测试在 Windows 上真实通过** | 1m6s |
+| 类型检查 + 测试 (windows-latest) | ✅ **全部测试在 Windows 上真实通过** | 1m6s |
 | macOS arm64 打包 | ✅ 产出 DMG | 42s |
 | Windows x64 打包 | ✅ **产出 NSIS 安装包** | 3m22s |
+
+**打包产物冒烟(2026-11-07 加入)**:两个打包 job 在产出安装包后,直接运行
+`win-unpacked/API Workbench.exe --smoke` / `mac-arm64/API Workbench.app --smoke`,
+**安装产物在 CI 干净机器上实际运行完整闭环,失败即 job 失败**。
+这把"Windows 包能否运行"从【未验证】推进到【每次 push 自动实测】;真机差异仅剩安装器体验。
 
 **产物**（Actions Artifacts，已用 API 确认存在）：
 - `api-workbench-win-x64`（121,749,147 字节，含 NSIS 安装包）
