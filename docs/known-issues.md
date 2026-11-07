@@ -9,11 +9,11 @@
    - 影响：GitHub 直连超时时，安装依赖/打包失败（fetch failed / ETIMEDOUT）。
    - 复现：在 GitHub 受限网络执行 `npm ci` 或 `npm run dist:mac`。
    - 修复：设置环境变量 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 与 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`（GitHub Actions 环境无需此步）。
-1. **Windows 安装包未经真机安装验证**（更新于 CI 通过后）
-   - 位置：CI 已产出 `api-workbench-win-x64` NSIS 安装包（run 42367661321，121MB，真实存在）；双平台 103 项测试已在 windows-latest 上真实通过。
-   - 影响：安装包能在 Windows 上顺利安装、启动、跑通模拟闭环，尚未实测。
+1. **Windows 真机安装体验未验证**（更新于 CI 产物冒烟通过后）
+   - 位置：CI 已在每次 push 时对 `win-unpacked/API Workbench.exe` 实际运行 `--smoke`（run 42380537460 起,9 步全过）——**安装产物能否运行已自动化实测**；双平台全部测试亦在 CI 真实执行。
+   - 影响：仅剩"NSIS 安装器双击安装体验"未在真机验证（含 Smartscreen 未签名提示、开始菜单/桌面快捷方式）。
    - 复现：无 Windows 真机/虚拟机。
-   - 建议：从 Actions Artifacts 下载安装包，在 Windows 10/11 x64 上安装实测；关注 smartscreen 提示（未签名会有"更多信息 → 仍要运行"）。
+   - 建议：从 Actions Artifacts 下载安装包,在 Windows 10/11 x64 安装实测;未签名会有"更多信息 → 仍要运行"提示。
 2. **macOS 包未签名未公证**
    - 位置：`electron-builder.yml`（`identity: null`）
    - 影响：其他机器首次打开需右键 → 打开绕过 Gatekeeper（本机 ad-hoc 可直接运行）。

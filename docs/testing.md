@@ -179,9 +179,14 @@ run [42367661321](https://github.com/oMrCat/api-workbench/actions/runs/423676613
 | macOS arm64 打包 | ✅ 产出 DMG | 42s |
 | Windows x64 打包 | ✅ **产出 NSIS 安装包** | 3m22s |
 
-**打包产物冒烟(2026-11-07 加入)**:两个打包 job 在产出安装包后,直接运行
+**打包产物冒烟(2026-11-07 加入并实测通过)**:两个打包 job 在产出安装包后,直接运行
 `win-unpacked/API Workbench.exe --smoke` / `mac-arm64/API Workbench.app --smoke`,
 **安装产物在 CI 干净机器上实际运行完整闭环,失败即 job 失败**。
+run [42380537460](https://github.com/oMrCat/api-workbench/actions/runs/42380537460):
+Windows 产物冒烟 9/9 全过(含 DPAPI 密钥存储、模拟服务子进程、非流式/流式/401 诊断)。
+
+**CI 首轮实测还抓出并修复了一个真实跨平台缺陷**:Windows 路径为反斜杠,mock 服务的
+"直接运行检测"(`split('/')` 判断法)永远不匹配 → 子进程秒退;改为 `path.resolve` 严格比较。
 这把"Windows 包能否运行"从【未验证】推进到【每次 push 自动实测】;真机差异仅剩安装器体验。
 
 **产物**（Actions Artifacts，已用 API 确认存在）：
