@@ -3,6 +3,7 @@
 // 编程启动：import { startMockServer } from './server.mjs' → { port, close() }
 
 import * as http from 'node:http'
+import * as path from 'node:path'
 
 const VALID_KEY_PREFIX = 'sk-mock' // 任何以 sk-mock 开头的 Key 均有效，便于测试
 
@@ -447,8 +448,10 @@ async function handleAnthropic(req, res, body, log) {
   return json(res, 200, anthropicNonStream(model, prompt))
 }
 
-// CLI 直接运行
-const isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())
+// CLI 直接运行(平台无关:Windows 下 argv[1] 是反斜杠路径,不能用 split('/') 判断)
+import { fileURLToPath } from 'node:url'
+const thisFile = fileURLToPath(import.meta.url)
+const isDirectRun = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(thisFile)
 if (isDirectRun && process.env.NODE_ENV !== 'test-import') {
   const port = Number(process.env.MOCK_PORT ?? 8045)
   startMockServer(port, (m) => console.log(`[mock] ${m}`)).then((h) => {

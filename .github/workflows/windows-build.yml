@@ -75,9 +75,10 @@ jobs:
           $ok = $false
           foreach ($i in 1..2) {
             Write-Host "smoke attempt $i"
-            & $exe --smoke
-            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
-            Write-Host "attempt $i failed (exit $LASTEXITCODE)，可能为 Defender 首扫延迟，重试..."
+            # GUI 子系统程序的退出码用 Start-Process -PassThru 才能可靠捕获
+            $p = Start-Process -FilePath $exe -ArgumentList '--smoke' -Wait -PassThru -NoNewWindow
+            if ($p.ExitCode -eq 0) { $ok = $true; break }
+            Write-Host "attempt $i failed (exit $($p.ExitCode))，可能为 Defender 首扫延迟，重试..."
             Start-Sleep -Seconds 10
           }
           if (-not $ok) { Write-Error "打包产物冒烟验证失败"; exit 1 }
