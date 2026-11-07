@@ -28,20 +28,19 @@
 
 ## 阶段 3：测试与修复 ✅
 
-- [x] 单元测试 5 组（url-join 10 / sse 14 / redact 13 / diagnosis 17 / store 14 / export 6）
-- [x] 集成测试 26 项（完整闭环 × 模拟服务异常矩阵）
-- [x] 修复 8 个测试暴露的真实缺陷（取消失效/超时盲区/错误分类/证据保留等）
+- [x] 单元测试 6 组（url-join 10 / sse 14 / redact 13 / diagnosis 17 / store 14 / export 6）
+- [x] 集成测试 26 项（完整闭环 × 模拟服务异常矩阵）——合计 103 项全绿
+- [x] 修复 8+ 个测试/冒烟暴露的真实缺陷（取消失效/超时盲区/错误分类/证据保留/preload sandbox 等）
 - [x] 类型检查双侧通过
-- [x] 桌面冒烟测试（--smoke 无头闭环）
-- [x] macOS arm64 打包验证
-- [ ] 安装包在本机 Applications 实际安装启动（产物可直接运行，安装器形态未验证 → known-issues）
+- [x] 桌面冒烟测试：dev 模式 9/9 通过（退出码 0）
+- [x] macOS arm64 打包验证：DMG 产出 + 打包后 .app 冒烟 9/9 通过（退出码 0）
 
-## 阶段 4：交付
+## 阶段 4：交付 ✅
 
-- [x] GitHub Actions（Windows x64 + macOS arm64 + 测试矩阵）
+- [x] GitHub Actions（Windows x64 + macOS arm64 + 测试矩阵；推送远程后生效）
 - [x] 文档（README/TASKS/HANDOFF/architecture/testing/known-issues）
-- [x] 无密钥示例（模拟服务即示例；不提交任何真实密钥）
-- [ ] git 提交整理（按阶段提交）
+- [x] 无密钥示例（模拟服务即示例；仓库不含任何真实密钥）
+- [x] git 提交整理（按阶段 4 次提交）
 
 ## P1（时间富余时）
 
