@@ -4,7 +4,11 @@
 
 ## 当前阶段
 
-**P0 全部完成（阶段 1-4 ✅）。** 下一步：推送到 GitHub 使 CI 生效（需用户批准推送），然后按 P1 顺序开发。
+**P0 全部完成（阶段 1-4 ✅），已推送远程仓库。**
+
+- 远程：https://github.com/oMrCat/api-workbench（**private**，2026-11-07 推送，用户完成 gh 认证后授权推送）
+- CI（Build & Test）：推送自动触发；Windows x64 / macOS arm64 打包与双平台测试矩阵的**实际运行结果**见 `docs/testing.md` 与 CI 页面
+- git remote origin 已配置；后续提交直接 `git push`
 
 ## 实测验收状态（2026-11-07，本机）
 
