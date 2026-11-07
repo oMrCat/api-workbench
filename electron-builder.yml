@@ -1,0 +1,40 @@
+# electron-builder 打包配置（macOS arm64 优先，Windows x64 通过 CI 构建）
+appId: com.apiworkbench.app
+productName: API Workbench
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  # 模拟服务脚本随包分发（应用内可启动本地模拟服务）
+  - from: mock-server
+    to: mock-server
+    filter:
+      - server.mjs
+asar: true
+
+mac:
+  # 本地验证：不签名（无开发者证书）。ad-hoc 签名让本机可启动。
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  category: public.app-category.developer-tools
+  darkModeSupport: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # CI 无签名证书：不签名，明确记录在交付文档
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: API Workbench
