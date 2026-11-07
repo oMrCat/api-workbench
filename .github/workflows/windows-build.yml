@@ -77,7 +77,8 @@ jobs:
 
   build-macos:
     name: macOS arm64 打包
-    runs-on: macos-14
+    # macos-14 已于 2026-11-02 退役（jobs 无日志直接 cancelled）；macos-latest 当前为 arm64
+    runs-on: macos-latest
     needs: test
     if: github.event_name != 'pull_request'
     timeout-minutes: 30
