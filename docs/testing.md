@@ -106,7 +106,25 @@ export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-
 用户可自行操作：启动应用 → 服务商页配置真实服务商与密钥 → 请求测试页发起。
 真实接口计费行为（usage 字段差异、4xx 响应体格式差异）可能与模拟服务有出入，遇问题请导出脱敏报告反馈。
 
-## Windows 构建
+## CI 构建（Windows / macOS）
 
-**状态：CI 配置已就绪（.github/workflows/windows-build.yml），尚未推送远程仓库，故 CI 实际运行状态未验证。**
-无 Windows 真机，无法本地验证 Windows 安装包。限制记录于 docs/known-issues.md。
+**状态：✅ 已验证。** 仓库已推送 GitHub（https://github.com/oMrCat/api-workbench，private），
+run [42367661321](https://github.com/oMrCat/api-workbench/actions/runs/42367661321)（2026-11-07）四 job 全绿：
+
+| Job | 结果 | 耗时 |
+| --- | --- | --- |
+| 类型检查 + 测试 (ubuntu-latest) | ✅ | 32s |
+| 类型检查 + 测试 (windows-latest) | ✅ **103 项测试在 Windows 上真实通过** | 1m6s |
+| macOS arm64 打包 | ✅ 产出 DMG | 42s |
+| Windows x64 打包 | ✅ **产出 NSIS 安装包** | 3m22s |
+
+**产物**（Actions Artifacts，已用 API 确认存在）：
+- `api-workbench-win-x64`（121,749,147 字节，含 NSIS 安装包）
+- `api-workbench-mac-arm64`（123,381,617 字节，含 DMG）
+
+CI 期间修复的两个工作流问题（均有 commit 记录）：
+1. `macos-14` runner 镜像 2026-11-02 退役 → job 无日志直接 cancelled → 改 `macos-latest`
+2. 检测到 GitHub origin 后 electron-builder 要求 GH_TOKEN → 显式 `--publish never`
+
+**边界（如实）**：CI 构建成功 ≠ Windows 真机安装验收。安装包尚未在真实 Windows 机器上
+安装、启动、跑模拟闭环——此项仍标注"未验证"，见 known-issues.md。
