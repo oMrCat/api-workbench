@@ -4,6 +4,12 @@
 
 ## 平台与打包
 
+0a. **Release 的 Windows 包为免安装 zip(NSIS 安装器仅在 CI Artifacts)**
+   - 位置:本地 `npm run dist:win` 的 NSIS 步骤失败——makensis 为 x86_64 二进制,Apple M1(无 Rosetta)报 error -86
+   - 影响:Release 页提供 win-unpacked 免安装 zip(解压运行 `API Workbench.exe`);NSIS 安装包需从 CI Artifacts 下载(需登录 GitHub)
+   - 建议:安装 Rosetta(`softwareupdate --install-rosetta --agree-to-license`)后本地可产 NSIS;或直接用 CI 产物
+0b. **safeStorage 弃用告警已消除**:探测改用 `isAsyncEncryptionAvailable`(Electron 45 新 API),旧版本回退同步 API
+
 0. **网络受限环境需配置镜像**
    - 位置：构建环境（本机实测；`npm install` 时 Electron 二进制下载与 `electron-builder` 资源下载默认走 GitHub releases）
    - 影响：GitHub 直连超时时，安装依赖/打包失败（fetch failed / ETIMEDOUT）。
