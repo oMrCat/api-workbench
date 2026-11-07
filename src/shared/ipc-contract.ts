@@ -1,36 +1,9 @@
-// IPC 契约：通道名单 + 参数校验 Schema（zod）。
-// 渲染进程只能通过 preload 暴露的白名单方法触达这里定义的通道。
+// IPC 契约：通道名单（自 ipc-channels 转发）+ 参数校验 Schema（zod）。
+// 注意：本模块引入 zod，**不得被 preload 导入**（sandbox 限制）；preload 只用 ipc-channels。
 
 import { z } from 'zod'
 
-export const IPC = {
-  AppInfo: 'app:get-info',
-  ProvidersList: 'providers:list',
-  ProvidersSave: 'providers:save',
-  ProvidersDelete: 'providers:delete',
-  SecretsStatus: 'secrets:status',
-  SecretSet: 'secrets:set',
-  SecretGetPreview: 'secrets:get-preview',
-  SecretDelete: 'secrets:delete',
-  ModelsSync: 'models:sync',
-  ModelsGet: 'models:get',
-  ModelsSaveEntry: 'models:save-entry',
-  ModelsDeleteEntry: 'models:delete-entry',
-  TestRun: 'test:run',
-  TestCancel: 'test:cancel',
-  RunEvent: 'test:event', // main -> renderer 推送
-  HistoryList: 'history:list',
-  HistoryDelete: 'history:delete',
-  HistoryClear: 'history:clear',
-  SettingsGet: 'settings:get',
-  SettingsSet: 'settings:set',
-  ExportReport: 'export:report',
-  CurlSample: 'report:curl',
-  OpenExternal: 'window:open-external',
-  MockStart: 'mock:start',
-  MockStop: 'mock:stop',
-  MockStatus: 'mock:status'
-} as const
+export { IPC } from './ipc-channels'
 
 // ---------- 校验 Schema ----------
 

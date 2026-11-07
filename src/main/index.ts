@@ -348,6 +348,7 @@ function createWindow(): void {
     minHeight: 640,
     title: 'API Workbench',
     backgroundColor: '#f5f5f7',
+    show: !app.commandLine.hasSwitch('smoke'), // 冒烟模式不弹窗干扰
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -378,7 +379,7 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  if (!app.isPackaged) {
+  if (!app.isPackaged && !app.commandLine.hasSwitch('smoke')) {
     win.webContents.openDevTools({ mode: 'detach' })
   }
 
@@ -387,7 +388,130 @@ function createWindow(): void {
 
 // ---------- 生命周期 ----------
 
-app.whenReady().then(() => {  store = new ConfigStore(app.getPath('userData'))
+app.on('before-quit', () => {
+  // 清理：未完成请求、模拟服务子进程
+  runner?.cancelAll()
+  if (mockChild && mockChild.exitCode == null) {
+    mockChild.kill()
+    mockChild = null
+  }
+})
+
+// ---------- 冒烟测试模式 ----------
+// electron . --smoke：验证窗口加载、IPC、密钥存储可用性，并通过模拟服务跑一次完整请求闭环。
+// 全部通过 → 退出码 0；任一失败 → 退出码 1。供 CI 与本机验收使用。
+
+async function runSmokeTest(): Promise<void> {
+  const steps: string[] = []
+  const fail = (msg: string): never => {
+    console.error(`[smoke] ❌ ${msg}`)
+    console.error(`[smoke] 已通过步骤：${steps.join(' → ') || '（无）'}`)
+    app.exit(1)
+    throw new Error(msg)
+  }
+  const pass = (msg: string) => {
+    steps.push(msg)
+    console.log(`[smoke] ✅ ${msg}`)
+  }
+
+  try {
+    // 1. 窗口加载
+    await new Promise<void>((resolve, reject) => {
+      if (win!.webContents.isLoading()) {
+        win!.webContents.once('did-finish-load', () => resolve())
+      } else resolve()
+      setTimeout(() => reject(new Error('窗口加载超时')), 15000)
+    })
+    pass('窗口与渲染进程加载完成')
+
+    // 2. 渲染进程挂载成功（检查 root 有内容且无致命错误）
+    const rootHasContent = await win!.webContents.executeJavaScript(
+      `document.getElementById('root')?.children.length > 0`
+    )
+    if (!rootHasContent) fail('React 未挂载（#root 为空）')
+    pass('React 应用挂载成功')
+
+    // 3. CSP 与安全基线
+    const sec = await win!.webContents.executeJavaScript(
+      `({ hasCSP: !!document.querySelector('meta[http-equiv="Content-Security-Policy"]') })`
+    )
+    if (!sec.hasCSP) fail('CSP meta 缺失')
+    pass('CSP 已生效')
+
+    // 4. 密钥存储状态（系统或会话内存均视为可用，但必须明确非 undefined）
+    const info = await win!.webContents.executeJavaScript(`window.api.getAppInfo()`)
+    if (!info?.secretStore?.mode) fail('密钥存储状态未获取')
+    pass(`密钥存储模式：${info.secretStore.mode}`)
+
+    // 5. 配置保存/读取闭环（用临时 ID，不污染用户配置）
+    const smokeId = 'smoke-p'
+    const prov = {
+      id: smokeId,
+      name: '冒烟测试',
+      baseUrl: 'http://127.0.0.1:0', // 占位，稍后启动模拟服务后更新
+      protocol: 'openai-chat',
+      headers: [],
+      timeoutMs: 10000,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    const saveResult = await win!.webContents.executeJavaScript(
+      `window.api.saveProvider(${JSON.stringify(prov)})`
+    )
+    if (!saveResult?.providers?.some((p: { id: string }) => p.id === smokeId)) fail('服务商保存失败')
+    pass('服务商配置保存/读取闭环')
+
+    // 6. 模拟服务子进程启动
+    const mockInfo = await win!.webContents.executeJavaScript(`window.api.mockStart()`)
+    if (!mockInfo?.running || !mockInfo.port) fail(`模拟服务启动失败：${mockInfo?.error ?? '未知'}`)
+    pass(`模拟服务子进程启动（端口 ${mockInfo.port}）`)
+
+    // 7. 更新 baseUrl → 完整请求闭环（非流式）
+    const baseUrl = `http://127.0.0.1:${mockInfo.port}`
+    await win!.webContents.executeJavaScript(
+      `window.api.saveProvider(${JSON.stringify({ ...prov, baseUrl })})`
+    )
+    await win!.webContents.executeJavaScript(
+      `window.api.setSecret('${smokeId}', 'sk-mock-smoke-key')`
+    )
+    const record = await win!.webContents.executeJavaScript(
+      `window.api.runTest({ providerId: '${smokeId}', model: 'mock-chat-mini', stream: false, prompt: '冒烟测试', maxTokens: 32 })`
+    )
+    if (!record?.ok || record.httpStatus !== 200) fail(`非流式请求失败：${JSON.stringify(record?.errorMessage)}`)
+    if (record.request.headers['Authorization'] !== '***REDACTED***') fail('请求记录未脱敏！')
+    pass(`非流式请求闭环（HTTP 200，耗时 ${record.timing.totalMs}ms，文本 ${record.text?.length ?? 0} 字符，已脱敏）`)
+
+    // 8. 流式请求闭环
+    const streamRecord = await win!.webContents.executeJavaScript(
+      `window.api.runTest({ providerId: '${smokeId}', model: 'mock-chat-streamer', stream: true, prompt: '冒烟流式', maxTokens: 64 })`
+    )
+    if (!streamRecord?.ok) fail(`流式请求失败：${JSON.stringify(streamRecord?.errorMessage)}`)
+    if (!streamRecord.streamEvents?.length) fail('流事件日志为空')
+    if (!streamRecord.timing?.firstContentMs) fail('首个内容片段延迟未记录')
+    pass(`流式请求闭环（事件 ${streamRecord.streamEvents.length} 条，首内容 ${streamRecord.timing.firstContentMs}ms）`)
+
+    // 9. 模拟错误场景（401）与诊断
+    await win!.webContents.executeJavaScript(`window.api.setSecret('${smokeId}', 'sk-wrong-key')`)
+    const errRecord = await win!.webContents.executeJavaScript(
+      `window.api.runTest({ providerId: '${smokeId}', model: 'mock-chat-mini', stream: false, prompt: 'x' })`
+    )
+    if (errRecord?.ok || errRecord?.httpStatus !== 401) fail('401 场景未按预期失败')
+    if (!errRecord.diagnosis?.possibleCauses?.length) fail('诊断缺失')
+    pass('错误场景与诊断生成（401）')
+
+    // 清理冒烟数据
+    await win!.webContents.executeJavaScript(`window.api.deleteProvider('${smokeId}')`)
+    await win!.webContents.executeJavaScript(`window.api.mockStop()`)
+
+    console.log(`[smoke] 🎉 全部 ${steps.length} 步通过`)
+    app.exit(0)
+  } catch (e) {
+    fail(String((e as Error).message ?? e))
+  }
+}
+
+app.whenReady().then(() => {
+  store = new ConfigStore(app.getPath('userData'))
   // safeStorage 在主进程始终可用；其加密能力由 SecretStore.getStatus() 检测
   const safeStorageLike: SafeStorageLike = {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
@@ -405,6 +529,10 @@ app.whenReady().then(() => {  store = new ConfigStore(app.getPath('userData'))
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+
+  if (app.commandLine.hasSwitch('smoke')) {
+    void runSmokeTest()
+  }
 })
 
 app.on('window-all-closed', () => {

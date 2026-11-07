@@ -1,0 +1,105 @@
+# API Workbench CI
+# - Windows x64 打包（推送到 main 或手动触发；PR 只跑测试不打包不签名）
+# - macOS arm64 打包（可选，用于交付产物验证）
+# 安全基线：最小权限、无密钥参与构建、不自动发布、有超时
+
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 类型检查 + 测试 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装锁定依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 单元 + 集成测试
+        run: npm test
+
+  build-windows:
+    name: Windows x64 打包
+    runs-on: windows-latest
+    needs: test
+    # PR 不打包（避免不可信代码消耗构建资源）；仅 main 推送与手动触发
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装锁定依赖
+        run: npm ci
+
+      - name: 构建与打包（不签名）
+        run: npm run dist:win
+        env:
+          # 无签名证书：electron-builder 显式跳过签名
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-workbench-win-x64
+          path: dist/*.exe
+          retention-days: 14
+          if-no-files-found: error
+
+  build-macos:
+    name: macOS arm64 打包
+    runs-on: macos-14
+    needs: test
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装锁定依赖
+        run: npm ci
+
+      - name: 构建与打包（ad-hoc，不签名不公证）
+        run: npm run dist:mac
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-workbench-mac-arm64
+          path: dist/*.dmg
+          retention-days: 14
+          if-no-files-found: error

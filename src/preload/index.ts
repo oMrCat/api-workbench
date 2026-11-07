@@ -2,7 +2,8 @@
 // 只有白名单方法，不暴露 ipcRenderer 原始对象，不暴露任意文件/命令接口。
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from '@shared/ipc-contract'
+// sandbox 下 preload 只能 require('electron')：通道名必须来自零依赖模块
+import { IPC } from '@shared/ipc-channels'
 
 // 所有方法名与通道固定白名单；参数由主进程侧 zod 校验二次把关
 const api = {
