@@ -52,10 +52,53 @@
 
 ## 桌面冒烟测试
 
-**执行命令**：`npx electron . --smoke`
-（构建产物运行；验证窗口加载、React 挂载、CSP、密钥存储状态、配置闭环、模拟服务子进程、非流式闭环、流式闭环、401 诊断、退出码）
+**执行命令**：`npm run build && npx electron . --smoke`（构建产物运行，无头模式）
 
-**状态**：见下方"执行记录"节（在 macOS 本机执行，输出与退出码如实记录）。
+**最近一次结果**：**退出码 0，9/9 步全部通过**，**真实执行**（2026-11-07，本机）：
+
+```
+[smoke] ✅ 窗口与渲染进程加载完成
+[smoke] ✅ React 应用挂载成功
+[smoke] ✅ CSP 已生效
+[smoke] ✅ 密钥存储模式：system          ← macOS Keychain 实测可用
+[smoke] ✅ 服务商配置保存/读取闭环
+[smoke] ✅ 模拟服务子进程启动（端口 62925）
+[smoke] ✅ 非流式请求闭环（HTTP 200，耗时 107ms，文本 61 字符，已脱敏）
+[smoke] ✅ 流式请求闭环（事件 9 条，首内容 35ms）
+[smoke] ✅ 错误场景与诊断生成（401）
+[smoke] 🎉 全部 9 步通过
+```
+
+验证内容：窗口加载、React 挂载、CSP 生效、safeStorage 状态、配置保存/恢复、
+模拟服务子进程启动、非流式完整闭环（含脱敏断言）、流式完整闭环（事件日志+首内容延迟）、
+401 错误场景与诊断生成、退出清理。
+
+## 本机打包
+
+**执行命令**：`npx electron-builder --mac --arm64`（含 `ELECTRON_MIRROR` 环境变量，见下）
+
+**产物**：`dist/API Workbench-0.1.0-arm64.dmg` + `dist/mac-arm64/API Workbench.app`（真实产出）
+
+**打包产物冒烟验证**：对打包后的 `.app` 二进制直接执行 `--smoke`，**退出码 0，9/9 步全过**
+（端口 63014 的模拟服务子进程从 extraResources 正确解析——验证了 asar 打包与资源路径）：
+
+```
+[smoke] ✅ 窗口与渲染进程加载完成 → … → 密钥存储模式：system
+[smoke] ✅ 非流式请求闭环（HTTP 200，耗时 112ms，已脱敏）
+[smoke] ✅ 流式请求闭环（事件 9 条，首内容 35ms）
+[smoke] 🎉 全部 9 步通过
+```
+
+**签名状态**：未签名未公证（identity: null，无开发者证书），本机可直接运行；
+分发到其他 Mac 需右键 → 打开。未引导关闭 Gatekeeper。
+
+环境备注：本机网络 GitHub releases 直连超时，Electron 二进制与
+electron-builder 资源需走 npmmirror 镜像：
+
+```bash
+export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
+```
 
 ## 真实服务商接口测试
 

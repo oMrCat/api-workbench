@@ -4,6 +4,11 @@
 
 ## 平台与打包
 
+0. **网络受限环境需配置镜像**
+   - 位置：构建环境（本机实测；`npm install` 时 Electron 二进制下载与 `electron-builder` 资源下载默认走 GitHub releases）
+   - 影响：GitHub 直连超时时，安装依赖/打包失败（fetch failed / ETIMEDOUT）。
+   - 复现：在 GitHub 受限网络执行 `npm ci` 或 `npm run dist:mac`。
+   - 修复：设置环境变量 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 与 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`（GitHub Actions 环境无需此步）。
 1. **Windows 构建未经真机验证**（P0 交付时）
    - 位置：`.github/workflows/windows-build.yml`、`electron-builder.yml`
    - 影响：Windows NSIS 安装包能产出与否、启动行为、路径表现均未实测。
