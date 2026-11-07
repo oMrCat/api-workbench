@@ -1,3 +1,15 @@
+<div align="center">
+
+# API Workbench
+
+**本地优先的 AI 接口兼容性与诊断桌面工作台(Windows / macOS)**
+
+**简体中文** | [English](README.en.md)
+
+</div>
+
+---
+
 # API Workbench
 
 本地优先的 AI 接口兼容性与诊断桌面工作台（Windows / macOS）。
