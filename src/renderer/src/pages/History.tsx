@@ -136,6 +136,8 @@ export default function HistoryPage() {
                     ) : (
                       <span className="badge err">{r.phase}</span>
                     )}
+                    {r.compareId && <span className="badge info" style={{ marginLeft: 4 }}>对比组</span>}
+                    {r.perfId && <span className="badge dim" style={{ marginLeft: 4 }}>性能组</span>}
                   </td>
                   <td>
                     <button className="secondary small" onClick={() => void showCurl(r.id)}>

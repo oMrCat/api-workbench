@@ -178,6 +178,21 @@ export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-
 - 配置导出/导入:自定义头按敏感规则脱敏(`looksLikeSecret`/已知密钥/敏感标记)、防御性密钥字段名检查、导入逐条 zod 校验、ID 冲突跳过;系统对话框步骤人工验收(逻辑单测覆盖 8 项)
 - 性能汇总仅存本会话,逐请求完整记录照常入历史(文档注明)
 
+## P1 收官:OpenAI Responses 适配器(已实现)
+
+**执行命令**:`npm test`(新增 13 项:单元 10 + 集成 3)+ `npm run uitest` 回归
+
+**结果**:**157/157 自动化测试 + 24/24 UI 场景全部通过,真实执行**(2026-11-07)。覆盖:
+- 端点 `/v1/responses` + Bearer 认证;参数名 `max_output_tokens`(区别于 chat)
+- 流式事件(官方命名):`response.output_text.delta` / `response.completed`(usage)/ `response.failed` / `error` / `response.incomplete`(截断按正常结束)
+- 非流式 `output[]` → `output_text` 拼接;`status:'failed'` → 错误;chat 形态响应被明确拒绝
+- 端到端:非流式/流式增量/401 经模拟服务 `/v1/responses`
+- 顺带小完善:safeStorage 改用 Electron 45 异步 API(消除弃用告警)、模型页空目录引导跳转、历史页对比/性能分组徽章
+
+真实 OpenAI Responses API:**未验证**(无真实 Key)。
+
+**至此原需求定义的 P1 清单全部完成。**
+
 ## CI 构建（Windows / macOS）
 
 **状态：✅ 已验证。** 仓库已推送 GitHub（https://github.com/oMrCat/api-workbench，private），

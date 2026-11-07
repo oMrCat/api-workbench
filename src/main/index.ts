@@ -13,6 +13,7 @@ import { ConfigStore } from './store/config-store'
 import { SecretStore, type SafeStorageLike } from './store/secret-store'
 import { OpenAiChatAdapter } from './protocols/openai-chat'
 import { AnthropicMessagesAdapter } from './protocols/anthropic-messages'
+import { OpenAiResponsesAdapter } from './protocols/openai-responses'
 import type { ProtocolAdapter } from './protocols/types'
 import { TestRunner } from './runner/test-runner'
 import { recordCapabilityVerification } from './capability'
@@ -30,7 +31,8 @@ let mockPort = 0
 
 const CHAT_ADAPTERS: Record<string, ProtocolAdapter> = {
   'openai-chat': new OpenAiChatAdapter(),
-  'anthropic-messages': new AnthropicMessagesAdapter()
+  'anthropic-messages': new AnthropicMessagesAdapter(),
+  'openai-responses': new OpenAiResponsesAdapter()
 }
 function adapterFor(protocol: string): ProtocolAdapter {
   const a = CHAT_ADAPTERS[protocol]
@@ -571,15 +573,17 @@ async function runSmokeTest(): Promise<void> {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   store = new ConfigStore(app.getPath('userData'))
-  // safeStorage 在主进程始终可用；其加密能力由 SecretStore.getStatus() 检测
+  // safeStorage 在主进程始终可用;其加密能力由 SecretStore.probeAvailability() 异步探测一次
   const safeStorageLike: SafeStorageLike = {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    isAsyncEncryptionAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
     encryptString: (s) => safeStorage.encryptString(s),
     decryptString: (b) => safeStorage.decryptString(b)
   }
   secrets = new SecretStore(app.getPath('userData'), safeStorageLike)
+  await secrets.probeAvailability() // 启动探测一次,避免后续触碰弃用的同步 API
   runner = new TestRunner({
     onEvent: (ev: RunEvent) => {
       if (win && !win.isDestroyed()) win.webContents.send(IPC.RunEvent, ev)

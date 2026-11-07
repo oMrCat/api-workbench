@@ -4,7 +4,9 @@
 
 ## 当前阶段
 
-**P0 全部完成（阶段 1-4 ✅），已推送远程仓库。**
+**P0 + P1 全部完成(规划路线 100%),已推送远程仓库。**
+
+- P1 全清:Anthropic Messages ✓ / OpenAI Responses ✓ / 工具调用 ✓ / 多服务商对比 ✓ / 性能测试 ✓ / 配置导出导入 ✓ / CI 产物冒烟 ✓
 
 - 远程：https://github.com/oMrCat/api-workbench（**private**，2026-11-07 推送，用户完成 gh 认证后授权推送）
 - CI（Build & Test）：**已实跑全绿**（run 42367661321）：双平台 103 项测试 + Windows NSIS + macOS DMG 产出，详见 `docs/testing.md`

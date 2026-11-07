@@ -196,6 +196,16 @@ async function handle(req, res, log) {
     return
   }
 
+  // ---------- OpenAI Responses ----------
+  if (req.method === 'POST' && urlPath.includes('/responses')) {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => {
+      void handleResponses(req, res, body, keyOk, log)
+    })
+    return
+  }
+
   // ---------- Anthropic Messages ----------
   if (req.method === 'POST' && urlPath.includes('/messages')) {
     let body = ''
@@ -446,6 +456,88 @@ async function handleAnthropic(req, res, body, log) {
   }
   await sleep(80)
   return json(res, 200, anthropicNonStream(model, prompt))
+}
+
+// ---------- OpenAI Responses 处理 ----------
+function responsesNonStream(model, prompt) {
+  return {
+    id: `resp_mock_${Date.now().toString(36)}`,
+    object: 'response',
+    status: 'completed',
+    model,
+    output: [
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: `【模拟回复·Responses】模型 ${model} 已收到提示词(${prompt.length} 字符)。本条由本地模拟服务生成。`, annotations: [] }]
+      }
+    ],
+    usage: { input_tokens: Math.ceil(prompt.length / 4), output_tokens: 26, total_tokens: Math.ceil(prompt.length / 4) + 26 }
+  }
+}
+
+function responsesStreamEvents(model, prompt) {
+  const text = `你好！这是 Responses 格式的流式模拟回复：向日葵🌻、テキスト、🚀。事件按官方规范命名。`
+  const mid = Math.ceil(text.length / 2)
+  return [
+    { type: 'response.output_text.delta', delta: text.slice(0, mid) },
+    { type: 'response.output_text.delta', delta: text.slice(mid) },
+    {
+      type: 'response.completed',
+      response: {
+        id: `resp_mock_${Date.now().toString(36)}`,
+        object: 'response',
+        status: 'completed',
+        model,
+        usage: { input_tokens: Math.ceil(prompt.length / 4), output_tokens: 31, total_tokens: Math.ceil(prompt.length / 4) + 31 }
+      }
+    }
+  ]
+}
+
+async function handleResponses(req, res, body, keyOk, log) {
+  if (!keyOk) return json(res, 401, { error: { message: 'Invalid API key (mock)。请使用以 sk-mock 开头的测试密钥。', code: 'invalid_api_key' } })
+  let parsed = {}
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return json(res, 400, { error: { message: '请求体不是 JSON(模拟服务)', code: 'bad_request' } })
+  }
+  const model = String(parsed.model ?? '')
+  const prompt = typeof parsed.input === 'string' ? parsed.input : String(parsed.input?.[0]?.content ?? '')
+  const stream = Boolean(parsed.stream)
+
+  if (model === 'mock-403') return json(res, 403, { error: { message: 'You are not allowed to access this model (mock).', code: 'model_access_denied' } })
+  if (model === 'mock-404') return json(res, 404, { error: { message: `The model '${model}' does not exist (mock)`, code: 'model_not_found' } })
+  if (model === 'mock-429') {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '2' })
+    return res.end(JSON.stringify({ error: { message: 'Rate limit exceeded (mock)', code: 'rate_limit_exceeded' } }))
+  }
+  if (model === 'mock-500') return json(res, 500, { error: { message: 'Internal server error (mock upstream)', code: 'internal_error' } })
+  if (model === 'mock-nonjson') {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    return res.end('<html><body>我是一段网页而不是 JSON</body></html>')
+  }
+  if (model === 'mock-slow') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    for (const e of responsesStreamEvents(model, prompt)) {
+      if (res.destroyed) return
+      res.write(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+      await sleep(300)
+    }
+    return res.end()
+  }
+
+  if (stream) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+    const sseText = responsesStreamEvents(model, prompt)
+      .map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+      .join('')
+    await writeSseSplit(res, sseText, Math.max(16, Math.floor(Buffer.byteLength(sseText, 'utf8') / 7)), 30)
+    return res.end()
+  }
+  await sleep(80)
+  return json(res, 200, responsesNonStream(model, prompt))
 }
 
 // CLI 直接运行(平台无关:Windows 下 argv[1] 是反斜杠路径,不能用 split('/') 判断)

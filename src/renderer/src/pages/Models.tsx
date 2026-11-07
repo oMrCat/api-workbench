@@ -9,6 +9,7 @@ export default function ModelsPage() {
   const catalogs = useApp((s) => s.catalogs)
   const setCatalog = useApp((s) => s.setCatalog)
   const setToast = useApp((s) => s.setToast)
+  const setPage = useApp((s) => s.setPage)
   const [selectedId, setSelectedId] = useState<string | undefined>(providers[0]?.id)
   const [query, setQuery] = useState('')
   const [manualId, setManualId] = useState('')
@@ -136,7 +137,14 @@ export default function ModelsPage() {
         </div>
 
         {catalog && catalog.entries.length === 0 && catalog.status === 'ok' && (
-          <Empty text="目录为空（上游返回空列表）。可在上方手动添加模型 ID。" />
+          <div className="empty">
+            目录为空(上游返回空列表)。可在上方手动添加模型 ID,或直接去测试页手输发起。
+            <div style={{ marginTop: 10 }}>
+              <button className="secondary small" onClick={() => setPage('test')}>
+                去测试页 →
+              </button>
+            </div>
+          </div>
         )}
         {!catalog && <Empty text="尚未同步目录。点击上方「同步模型目录」，或手动添加模型 ID。" />}
 

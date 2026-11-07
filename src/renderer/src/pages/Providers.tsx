@@ -6,7 +6,7 @@ import { useApp } from '../store'
 import { CopyButton, Empty } from '../components/common'
 import { joinUrl } from '@shared/url'
 
-const PROTOCOLS: ProtocolKind[] = ['openai-chat', 'anthropic-messages'] // openai-responses 为 P1 后续项
+const PROTOCOLS: ProtocolKind[] = ['openai-chat', 'anthropic-messages', 'openai-responses']
 
 function blankProvider(): ProviderConfig {
   return {

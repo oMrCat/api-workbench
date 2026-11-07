@@ -105,7 +105,7 @@ export default function OverviewPage() {
         <div className="row">
           <span className="badge info">服务商 {providers.length}</span>
           <span className="badge info">本次会话记录 {history.length}</span>
-          <span className="badge dim">协议支持：OpenAI Chat（P0）｜Responses / Anthropic Messages（P1 计划）</span>
+          <span className="badge ok">协议支持:OpenAI Chat ✓ / Anthropic Messages ✓ / OpenAI Responses ✓(P1 全部完成)</span>
         </div>
         {providers.length === 0 && (
           <div className="notice info" style={{ marginTop: 10 }}>

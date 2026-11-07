@@ -7,12 +7,14 @@ import { startMockServer, type MockHandle } from '../../mock-server/server.mjs'
 import { TestRunner } from '../../src/main/runner/test-runner'
 import { OpenAiChatAdapter } from '../../src/main/protocols/openai-chat'
 import { AnthropicMessagesAdapter } from '../../src/main/protocols/anthropic-messages'
+import { OpenAiResponsesAdapter } from '../../src/main/protocols/openai-responses'
 import type { ProviderConfig } from '@shared/types'
 
 let mock: MockHandle
 let base: string
 const adapter = new OpenAiChatAdapter()
 const anthropicAdapter = new AnthropicMessagesAdapter()
+const responsesAdapter = new OpenAiResponsesAdapter()
 const runner = new TestRunner({})
 
 const KEY = 'sk-mock-integration-test-key'
@@ -501,5 +503,70 @@ describe('工具调用端到端(P1,mock-tools 两轮闭环)', () => {
     expect(r.ok).toBe(true)
     expect(r.toolSteps).toBeUndefined()
     expect(r.toolRounds).toBe(1)
+  }, 20000)
+})
+
+// ---------- OpenAI Responses 协议(P1 收官) ----------
+
+describe('OpenAI Responses 端到端(P1)', () => {
+  function responsesProvider(patch: Partial<ProviderConfig> = {}): ProviderConfig {
+    return provider({ protocol: 'openai-responses', ...patch })
+  }
+
+  it('正常非流式:input 字符串 + max_output_tokens 参数名 + output 拼接', async () => {
+    const r = await runner.run(
+      responsesAdapter,
+      { providerId: 'mock-p', model: 'mock-chat-mini', stream: false, prompt: '你好', maxTokens: 64 },
+      responsesProvider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    expect(r.ok).toBe(true)
+    expect(r.httpStatus).toBe(200)
+    expect(r.protocol).toBe('openai-responses')
+    expect(r.text).toContain('【模拟回复·Responses】')
+    expect((r.usage as { total_tokens: number }).total_tokens).toBeGreaterThan(0)
+    expect(r.request.headers['Authorization']).toBe('***REDACTED***')
+    // 证据:请求体使用 max_output_tokens 参数名
+    expect(String(r.request.body)).toContain('max_output_tokens')
+  }, 20000)
+
+  it('正常流式:增量 + response.completed usage', async () => {
+    const deltas: string[] = []
+    const live = new TestRunner({
+      onEvent: (ev) => {
+        if (ev.type === 'text-delta') deltas.push(ev.delta)
+      }
+    })
+
+    const r = await live.run(
+      responsesAdapter,
+      { providerId: 'mock-p', model: 'mock-chat-streamer', stream: true, prompt: '测试', maxTokens: 64 },
+      responsesProvider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    expect(r.ok).toBe(true)
+    expect(deltas.length).toBeGreaterThan(0)
+    expect(deltas.join('')).toBe(r.text)
+    expect((r.usage as { output_tokens: number }).output_tokens).toBeGreaterThan(0)
+    expect(r.streamEvents?.some((e) => e.data.includes('response.completed'))).toBe(true)
+  }, 20000)
+
+  it('401 → 错误体 + 诊断', async () => {
+
+    const r = await runner.run(
+      responsesAdapter,
+      { providerId: 'mock-p', model: 'mock-chat-mini', stream: false, prompt: 'x', maxTokens: 32 },
+      responsesProvider(),
+      'sk-wrong-responses-key',
+      { knownSecrets: ['sk-wrong-responses-key'] },
+      SETTINGS
+    )
+    expect(r.ok).toBe(false)
+    expect(r.httpStatus).toBe(401)
+    expect(r.diagnosis?.possibleCauses.some((c) => c.cause.includes('API Key 无效'))).toBe(true)
   }, 20000)
 })

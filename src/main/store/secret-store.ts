@@ -8,6 +8,7 @@ import type { SecretStoreStatus } from '@shared/types'
 
 export interface SafeStorageLike {
   isEncryptionAvailable(): boolean
+  isAsyncEncryptionAvailable?(): Promise<boolean>
   encryptString(plain: string): Buffer
   decryptString(encrypted: Buffer): string
 }
@@ -36,32 +37,66 @@ export class SecretStore {
     this.file = path.join(dir, 'secrets.json')
   }
 
-  /** 每次启动时检测一次；结果缓存供 UI 展示 */
+  /**
+   * 启动时探测一次加密可用性并缓存(main 在创建窗口前 await)。
+   * 优先使用 Electron 45 的异步 API(同步 isEncryptionAvailable 已弃用,调用会打告警);
+   * 旧版本无异步 API 时回退同步版。此后 getStatus() 只读缓存。
+   */
+  async probeAvailability(): Promise<void> {
+    if (!this.safeStorage) {
+      this.statusCache = {
+        mode: 'session-only',
+        reason: '安全存储模块不可用(未在 Electron 主进程中运行)。API Key 仅保存在当前会话内存中,退出后丢失,不会明文写入磁盘。'
+      }
+      return
+    }
+    try {
+      const s = this.safeStorage as SafeStorageLike & { isAsyncEncryptionAvailable?: () => Promise<boolean> }
+      let available: boolean
+      if (typeof s.isAsyncEncryptionAvailable === 'function') {
+        available = await s.isAsyncEncryptionAvailable()
+      } else {
+        available = s.isEncryptionAvailable()
+      }
+      this.statusCache = available
+        ? { mode: 'system' }
+        : {
+            mode: 'session-only',
+            reason: '操作系统安全存储(macOS Keychain / Windows DPAPI)不可用。API Key 仅保存在当前会话内存中,退出应用后丢失。'
+          }
+    } catch (e) {
+      this.statusCache = {
+        mode: 'session-only',
+        reason: `安全存储可用性检测失败:${String((e as Error)?.message ?? e)}。API Key 仅保存在当前会话内存中。`
+      }
+    }
+  }
+
+  /** 每次启动探测一次,结果缓存供 UI 与各方法使用 */
   getStatus(): SecretStoreStatus {
     if (this.statusCache) return this.statusCache
     if (!this.safeStorage) {
       this.statusCache = {
         mode: 'session-only',
-        reason: '安全存储模块不可用（未在 Electron 主进程中运行）。API Key 仅保存在当前会话内存中，退出后丢失，不会明文写入磁盘。'
+        reason: '安全存储模块不可用(未在 Electron 主进程中运行)。API Key 仅保存在当前会话内存中,退出后丢失,不会明文写入磁盘。'
       }
       return this.statusCache
     }
-    let available = false
     try {
-      available = this.safeStorage.isEncryptionAvailable()
+      // 兜底路径(理论上 main 已在启动时 probe):仅此处允许触达同步 API
+      const available = this.safeStorage.isEncryptionAvailable()
+      this.statusCache = available
+        ? { mode: 'system' }
+        : {
+            mode: 'session-only',
+            reason: '操作系统安全存储(macOS Keychain / Windows DPAPI)不可用。API Key 仅保存在当前会话内存中,退出应用后丢失。'
+          }
     } catch (e) {
       this.statusCache = {
         mode: 'session-only',
-        reason: `安全存储可用性检测失败：${String((e as Error)?.message ?? e)}。API Key 仅保存在当前会话内存中。`
+        reason: `安全存储可用性检测失败:${String((e as Error)?.message ?? e)}。API Key 仅保存在当前会话内存中。`
       }
-      return this.statusCache
     }
-    this.statusCache = available
-      ? { mode: 'system' }
-      : {
-          mode: 'session-only',
-          reason: '操作系统安全存储（macOS Keychain / Windows DPAPI）不可用。API Key 仅保存在当前会话内存中，退出应用后丢失。'
-        }
     return this.statusCache
   }
 
