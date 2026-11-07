@@ -6,6 +6,7 @@ import ProvidersPage from './pages/Providers'
 import ModelsPage from './pages/Models'
 import TestPage from './pages/Test'
 import ComparePage from './pages/Compare'
+import PerfPage from './pages/Perf'
 import HistoryPage from './pages/History'
 import SettingsPage from './pages/Settings'
 
@@ -15,6 +16,7 @@ const NAV: { key: Page; label: string }[] = [
   { key: 'models', label: '模型' },
   { key: 'test', label: '请求测试' },
   { key: 'compare', label: '对比' },
+  { key: 'perf', label: '性能' },
   { key: 'history', label: '诊断历史' },
   { key: 'settings', label: '设置' }
 ]
@@ -54,6 +56,7 @@ export default function App() {
         {page === 'models' && <ModelsPage />}
         {page === 'test' && <TestPage />}
         {page === 'compare' && <ComparePage />}
+        {page === 'perf' && <PerfPage />}
         {page === 'history' && <HistoryPage />}
         {page === 'settings' && <SettingsPage />}
       </main>

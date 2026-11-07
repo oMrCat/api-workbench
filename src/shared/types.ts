@@ -180,6 +180,8 @@ export interface TestRunRecord {
   toolRounds?: number
   /** 多服务商对比分组 ID(P1) */
   compareId?: string
+  /** 性能测试分组 ID(P1) */
+  perfId?: string
 }
 
 export type FailurePhase =
@@ -211,6 +213,8 @@ export interface TestParams {
   toolsEnabled?: boolean
   /** 多服务商对比(P1):同一轮对比的分组 ID,写入记录便于历史中识别 */
   compareId?: string
+  /** 性能测试(P1):同一轮压测的分组 ID */
+  perfId?: string
 }
 
 /** 运行过程中推送给渲染进程的事件 */

@@ -83,6 +83,39 @@ export default function ProvidersPage() {
         <Empty text="还没有服务商配置。点击下方按钮添加，或先在概览页启动本地模拟服务。" />
       )}
 
+      <div className="row" style={{ marginBottom: 12 }}>
+        <button
+          className="secondary"
+          onClick={() => {
+            void window.api.exportProviders().then((r) => {
+              if (r.ok) setToast({ kind: 'ok', text: `配置已导出:${r.path}` })
+              else if (r.cancelled) setToast({ kind: 'info', text: '已取消导出' })
+              else setToast({ kind: 'err', text: `导出失败:${r.error}` })
+            })
+          }}
+        >
+          导出配置(JSON,不含密钥)
+        </button>
+        <button
+          className="secondary"
+          onClick={() => {
+            void window.api.importProviders().then((r) => {
+              if (r.ok) {
+                void window.api.listProviders().then(setProviders)
+                setToast({
+                  kind: r.invalid.length > 0 ? 'info' : 'ok',
+                  text: `导入完成:成功 ${r.imported},跳过(已存在) ${r.skipped},无效 ${r.invalid.length}。密钥需重新录入。`
+                })
+              } else if (r.cancelled) setToast({ kind: 'info', text: '已取消导入' })
+              else setToast({ kind: 'err', text: `导入失败:${r.error}` })
+            })
+          }}
+        >
+          导入配置
+        </button>
+        <span className="muted">导出文件不含任何 API Key;导入后需重新录入密钥。</span>
+      </div>
+
       {providers.length > 0 && (
         <div className="panel">
           <table className="list">

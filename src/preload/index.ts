@@ -14,6 +14,8 @@ const api = {
   listProviders: () => ipcRenderer.invoke(IPC.ProvidersList),
   saveProvider: (p: unknown) => ipcRenderer.invoke(IPC.ProvidersSave, p),
   deleteProvider: (id: string) => ipcRenderer.invoke(IPC.ProvidersDelete, id),
+  exportProviders: () => ipcRenderer.invoke(IPC.ProvidersExport),
+  importProviders: () => ipcRenderer.invoke(IPC.ProvidersImport),
 
   // 密钥（只传明文给主进程，绝不从主进程拿回明文；预览仅末 4 位）
   getSecretsStatus: () => ipcRenderer.invoke(IPC.SecretsStatus),

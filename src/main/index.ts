@@ -19,6 +19,7 @@ import { recordCapabilityVerification } from './capability'
 import { classifyFetchError, timedFetch } from './net/http-client'
 import { plainHttpWarning } from '@shared/url'
 import { buildCurlSample, buildJsonReport, buildMarkdownReport } from './report/export'
+import { applyImportPayload, buildExportPayload, type ImportResult } from './report/provider-io'
 
 let win: BrowserWindow | null = null
 let store: ConfigStore
@@ -86,6 +87,43 @@ function registerIpc(): void {
     if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(id)) throw new Error('非法的服务商 ID')
     void secrets.deleteSecret(id) // 级联删除密钥
     return store.deleteProvider(id)
+  })
+
+  handle(IPC.ProvidersExport, async (): Promise<ExportResult> => {
+    const payload = buildExportPayload(store, secrets.allSecretValues())
+    const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+      title: '导出服务商配置(不含密钥)',
+      defaultPath: path.join(app.getPath('documents'), `api-workbench-providers-${Date.now()}.json`),
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (canceled || !filePath) return { ok: false, cancelled: true }
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+      return { ok: true, path: filePath }
+    } catch (err) {
+      return { ok: false, error: `写入失败:${String((err as Error).message)}` }
+    }
+  })
+
+  handle(IPC.ProvidersImport, async (): Promise<ImportResult & ExportResult> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
+      title: '导入服务商配置(JSON)',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return { ok: false, cancelled: true, imported: 0, skipped: 0, invalid: [] }
+    let text: string
+    try {
+      text = fs.readFileSync(filePaths[0], 'utf-8')
+    } catch (err) {
+      return { ok: false, error: `读取失败:${String((err as Error).message)}`, imported: 0, skipped: 0, invalid: [] }
+    }
+    try {
+      const result = applyImportPayload(store, text)
+      return { ok: true, ...result }
+    } catch (err) {
+      return { ok: false, error: String((err as Error).message), imported: 0, skipped: 0, invalid: [] }
+    }
   })
 
   handle(IPC.SecretsStatus, () => secrets.getStatus())
@@ -190,7 +228,7 @@ function registerIpc(): void {
       apiKey,
       { knownSecrets: secrets.allSecretValues() },
       { streamLogLimit: settings.streamLogLimit, streamIdleTimeoutMs: settings.streamIdleTimeoutMs },
-      { runId: p.runId, compareId: p.compareId }
+      { runId: p.runId, compareId: p.compareId, perfId: p.perfId }
     )
     if (settings.persistHistory) {
       store.appendHistory([record], settings.historyLimit, true)

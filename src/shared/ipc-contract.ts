@@ -47,6 +47,7 @@ export const testParamsSchema = z.object({
   streamIncludeUsage: z.boolean().optional(),
   toolsEnabled: z.boolean().optional(),
   compareId: z.string().regex(/^cmp-[a-zA-Z0-9-]{1,60}$/).optional(),
+  perfId: z.string().regex(/^perf-[a-zA-Z0-9-]{1,60}$/).optional(),
   runId: z
     .string()
     .regex(/^run-[a-zA-Z0-9-]{1,56}$/)

@@ -6,6 +6,8 @@ export const IPC = {
   ProvidersList: 'providers:list',
   ProvidersSave: 'providers:save',
   ProvidersDelete: 'providers:delete',
+  ProvidersExport: 'providers:export',
+  ProvidersImport: 'providers:import',
   SecretsStatus: 'secrets:status',
   SecretSet: 'secrets:set',
   SecretGetPreview: 'secrets:get-preview',

@@ -393,6 +393,31 @@ export async function runUiTest(win: BrowserWindow): Promise<void> {
       }
     })
 
+    // S14c 性能测试(N=3,并发 1,mock-chat-mini)
+    await scenario('S14c-性能测试', async () => {
+      await evalJs(`window.__t.nav('性能')`)
+      await evalJs(`window.__t.waitFor('用户主动启动的简单压测', 5000)`)
+      await evalJs(`window.__t.fillPlaceholder('如 mock-chat-mini', 'mock-chat-mini')`)
+      // 请求数改为 3
+      await evalJs(
+        `(async () => {
+          const nums = [...document.querySelectorAll('input[type=number]')];
+          const countInput = nums[0];
+          const proto = HTMLInputElement.prototype;
+          Object.getOwnPropertyDescriptor(proto, 'value').set.call(countInput, '3');
+          countInput.dispatchEvent(new Event('input', { bubbles: true }));
+          return 'set';
+        })()`
+      )
+      await evalJs(`window.__t.clickText('开始性能测试')`)
+      await evalJs(`window.__t.waitFor('汇总', 30000)`)
+      const ok = await evalJs<boolean>(
+        `window.__t.has('100%') && window.__t.has('p95') && document.querySelectorAll('table.list tbody tr').length >= 3`
+      )
+      if (!ok) throw new Error('性能汇总或逐请求表缺失')
+      return `截图见 ${await shot('S14c-perf')}`
+    })
+
     // S14 错误模型 → 诊断面板(先回测试页并恢复非流式)
     await scenario('S14-错误场景诊断面板', async () => {
       await evalJs(`window.__t.nav('请求测试')`)
