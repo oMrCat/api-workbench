@@ -6,6 +6,7 @@ import type {
   AdapterStreamResult,
   BuiltRequest,
   ChatRequestInput,
+  NeutralMessage,
   NonStreamResult,
   ProtocolAdapter
 } from './types'
@@ -14,6 +15,34 @@ import { mergeHeaders } from './types'
 import { joinUrl } from '@shared/url'
 
 const TEXT_CAP = 128 * 1024 // 提取文本上限
+
+/** 中立消息 → OpenAI messages 数组 */
+function toOpenAiMessages(input: ChatRequestInput): unknown[] {
+  if (input.messages && input.messages.length > 0) {
+    return input.messages.map((m: NeutralMessage) => {
+      if (m.role === 'assistant') {
+        return {
+          role: 'assistant',
+          content: m.text ?? null,
+          ...(m.toolCalls
+            ? {
+                tool_calls: m.toolCalls.map((tc) => ({
+                  id: tc.id,
+                  type: 'function',
+                  function: { name: tc.name, arguments: tc.argsJson }
+                }))
+              }
+            : {})
+        }
+      }
+      if (m.role === 'tool') {
+        return { role: 'tool', tool_call_id: m.toolResult!.toolCallId, content: m.toolResult!.content }
+      }
+      return { role: 'user', content: m.text ?? '' }
+    })
+  }
+  return [{ role: 'user', content: input.prompt }]
+}
 
 export class OpenAiChatAdapter implements ProtocolAdapter {
   readonly kind = 'openai-chat' as const
@@ -32,7 +61,7 @@ export class OpenAiChatAdapter implements ProtocolAdapter {
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
     const body: Record<string, unknown> = {
       model: input.model,
-      messages: [{ role: 'user', content: input.prompt }],
+      messages: toOpenAiMessages(input),
       stream: input.stream
     }
     // 仅发送用户明确设置的字段
@@ -42,6 +71,13 @@ export class OpenAiChatAdapter implements ProtocolAdapter {
     }
     if (typeof input.temperature === 'number') body['temperature'] = input.temperature
     if (input.stream && input.streamIncludeUsage) body['stream_options'] = { include_usage: true }
+    // 工具调用(P1):仅当用户启用时注入固定示例工具
+    if (input.tools && input.tools.length > 0) {
+      body['tools'] = input.tools.map((t) => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.parameters }
+      }))
+    }
     return { url, method: 'POST', headers: mergeHeaders(headers, provider), body: JSON.stringify(body) }
   }
 
@@ -112,11 +148,23 @@ export class OpenAiChatAdapter implements ProtocolAdapter {
       text = joined.length > TEXT_CAP ? joined.slice(0, TEXT_CAP) : joined
       textTruncated = joined.length > TEXT_CAP
     }
+    // 工具调用请求(P1):模型未给内容而给出 tool_calls 时原样返回,由执行器校验回传
+    const rawToolCalls = parsed?.choices?.[0]?.message?.tool_calls
+    const toolCalls = Array.isArray(rawToolCalls)
+      ? rawToolCalls
+          .filter((tc: any) => tc && typeof tc === 'object' && typeof tc.id === 'string' && tc.function?.name)
+          .map((tc: any) => ({
+            id: String(tc.id),
+            name: String(tc.function.name),
+            argsJson: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments ?? {})
+          }))
+      : undefined
     return {
       ok: true,
       text,
       textTruncated,
-      usage: parsed?.usage != null ? parsed.usage : undefined
+      usage: parsed?.usage != null ? parsed.usage : undefined,
+      toolCalls
     }
   }
 

@@ -1,8 +1,18 @@
 // 协议适配器接口：不同 AI 协议在此抽象下统一。
 // P0 实现 openai-chat；openai-responses 与 anthropic-messages 为 P1。
 
-import type { ModelEntry, ProtocolKind, ProviderConfig } from '@shared/types'
+import type { ModelEntry, ProtocolKind, ProviderConfig, ToolDefinition } from '@shared/types'
 import type { SseEvent } from '../net/sse-parser'
+
+/** 工具循环用的中立消息(协议无关),由适配器映射为协议格式 */
+export interface NeutralMessage {
+  role: 'user' | 'assistant' | 'tool'
+  text?: string
+  /** assistant 的工具调用请求 */
+  toolCalls?: { id: string; name: string; argsJson: string }[]
+  /** tool 角色的执行结果回传 */
+  toolResult?: { toolCallId: string; content: string }
+}
 
 export interface ChatRequestInput {
   model: string
@@ -12,6 +22,10 @@ export interface ChatRequestInput {
   maxTokensParam?: 'max_tokens' | 'max_completion_tokens'
   temperature?: number
   streamIncludeUsage?: boolean
+  /** 工具调用(P1):注入固定示例工具 */
+  tools?: ToolDefinition[]
+  /** 工具循环后续轮次的完整消息历史(覆盖 prompt 单轮结构) */
+  messages?: NeutralMessage[]
 }
 
 export interface BuiltRequest {
@@ -39,6 +53,8 @@ export interface NonStreamResult {
   textTruncated?: boolean
   usage?: unknown
   error?: { message: string; code?: string; type?: string }
+  /** 模型请求的工具调用(P1);非空时由执行器回传结果并继续下一轮 */
+  toolCalls?: { id: string; name: string; argsJson: string }[]
 }
 
 export interface ModelsResult {

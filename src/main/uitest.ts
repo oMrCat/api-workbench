@@ -312,6 +312,22 @@ export async function runUiTest(win: BrowserWindow): Promise<void> {
       return '请求被界面按钮成功取消'
     })
 
+    // S13b 工具调用测试 UI 闭环(mock-tools 两轮)
+    await scenario('S13b-工具调用UI闭环', async () => {
+      await evalJs(`window.__t.waitGone('请求进行中', 20000)`)
+      await evalJs(`window.__t.toggleStream(false)`)
+      await evalJs(`window.__t.clickText('工具调用测试')`)
+      await evalJs(`window.__t.fillPlaceholder('如 mock-chat-mini', 'mock-tools')`)
+      await evalJs(`window.__t.clickText('发起请求')`)
+      await evalJs(`window.__t.waitFor('工具调用步骤', 15000)`)
+      const ok = await evalJs<boolean>(
+        `window.__t.has('calculate_sum') && window.__t.has('成功') && window.__t.has('"sum":5') && window.__t.has('回传结果后的最终回答')`
+      )
+      if (!ok) throw new Error('工具步骤表格或最终回答缺失')
+      await evalJs(`window.__t.clickText('工具调用测试')`) // 还原开关
+      return `截图见 ${await shot('S13b-tools-loop')}`
+    })
+
     // S14 错误模型 → 诊断面板(先恢复非流式,保证按钮文案匹配)
     await scenario('S14-错误场景诊断面板', async () => {
       await evalJs(`window.__t.toggleStream(false)`)

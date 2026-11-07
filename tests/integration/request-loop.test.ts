@@ -462,3 +462,44 @@ describe('Anthropic Messages 端到端(P1)', () => {
     expect(r.entries.length).toBeGreaterThan(5)
   })
 })
+
+// ---------- 工具调用循环(P1) ----------
+
+describe('工具调用端到端(P1,mock-tools 两轮闭环)', () => {
+  it('完整链路:模型请求工具 → 白名单执行 → 结果回传 → 最终回答', async () => {
+    const r = await runner.run(
+      adapter,
+      { providerId: 'mock-p', model: 'mock-tools', stream: false, prompt: '请算一下 2+3', toolsEnabled: true },
+      provider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    expect(r.ok).toBe(true)
+    expect(r.toolRounds).toBe(2)
+    expect(r.toolSteps).toHaveLength(1)
+    const step = r.toolSteps![0]
+    expect(step.toolName).toBe('calculate_sum')
+    expect(step.status).toBe('ok')
+    expect(JSON.parse(step.resultJson!)).toEqual({ sum: 5, expression: '2 + 3' })
+    expect(r.text).toContain('calculate_sum(2,3) = 5')
+    expect(r.text).toContain('回传结果后的最终回答')
+    // 最终请求捕获应包含工具结果回传(证据完整)
+    expect(String(r.request.body)).toContain('tool_call_id')
+    expect(r.request.headers['Authorization']).toBe('***REDACTED***')
+  }, 20000)
+
+  it('未启用工具时,mock-tools 直接返回 tool_calls 文本不做执行', async () => {
+    const r = await runner.run(
+      adapter,
+      { providerId: 'mock-p', model: 'mock-tools', stream: false, prompt: 'x' },
+      provider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    expect(r.ok).toBe(true)
+    expect(r.toolSteps).toBeUndefined()
+    expect(r.toolRounds).toBe(1)
+  }, 20000)
+})

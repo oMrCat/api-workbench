@@ -45,6 +45,7 @@ export const testParamsSchema = z.object({
   maxTokens: z.number().int().min(1).max(100000).optional(),
   temperature: z.number().min(0).max(2).optional(),
   streamIncludeUsage: z.boolean().optional(),
+  toolsEnabled: z.boolean().optional(),
   runId: z
     .string()
     .regex(/^run-[a-zA-Z0-9-]{1,56}$/)

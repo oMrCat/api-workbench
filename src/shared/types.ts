@@ -73,6 +73,31 @@ export interface ModelCatalog {
   rawTruncated?: boolean
 }
 
+// ---------- 工具调用(P1) ----------
+
+/** 固定的无副作用示例工具定义(发送给模型的 JSON Schema) */
+export interface ToolDefinition {
+  name: string
+  description: string
+  /** JSON Schema(参数) */
+  parameters: Record<string, unknown>
+}
+
+/** 一次工具调用步骤的完整记录(展示与导出用) */
+export interface ToolCallStep {
+  seq: number
+  toolName: string
+  /** 模型给出的原始参数 JSON */
+  argumentsJson: string
+  /** 本地执行结果(JSON 序列化);被拒绝时不填 */
+  resultJson?: string
+  /** 被拒绝或执行失败的原因 */
+  error?: string
+  durationMs?: number
+  /** rejected = 白名单外被拒绝;failed = 执行抛错;ok = 成功 */
+  status: 'ok' | 'rejected' | 'failed'
+}
+
 // ---------- 请求测试 ----------
 
 export interface StreamEventLog {
@@ -149,6 +174,10 @@ export interface TestRunRecord {
   diagnosis?: Diagnosis
   /** 错误响应体片段（有上限） */
   errorBodyPreview?: string
+  /** 工具调用步骤(P1,toolsEnabled 时存在) */
+  toolSteps?: ToolCallStep[]
+  /** 工具循环轮数(1 = 模型直接回答,未调用工具) */
+  toolRounds?: number
 }
 
 export type FailurePhase =
@@ -176,6 +205,8 @@ export interface TestParams {
   streamIncludeUsage?: boolean
   /** 渲染进程预生成的运行 ID（取消请求时按此 ID 匹配）；缺省由主进程生成 */
   runId?: string
+  /** 工具调用测试(P1):启用后注入固定示例工具并自动回传结果 */
+  toolsEnabled?: boolean
 }
 
 /** 运行过程中推送给渲染进程的事件 */

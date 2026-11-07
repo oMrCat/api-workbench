@@ -24,6 +24,7 @@ export default function TestPage() {
   const [useMaxTokens, setUseMaxTokens] = useState(true)
   const [temperature, setTemperature] = useState('')
   const [streamIncludeUsage, setStreamIncludeUsage] = useState(false)
+  const [toolsEnabled, setToolsEnabled] = useState(false)
   const [lastRecord, setLastRecord] = useState<TestRunRecord | undefined>(undefined)
   const runIdRef = useRef<string | undefined>(undefined)
 
@@ -62,7 +63,8 @@ export default function TestPage() {
       prompt,
       maxTokens: useMaxTokens && maxTokens ? Math.max(1, Number(maxTokens)) : undefined,
       temperature: temperature !== '' ? Number(temperature) : undefined,
-      streamIncludeUsage: stream && streamIncludeUsage ? true : undefined
+      streamIncludeUsage: stream && streamIncludeUsage ? true : undefined,
+      toolsEnabled: toolsEnabled && provider.protocol === 'openai-chat' ? true : undefined
     }
     if (!params.model) {
       setToast({ kind: 'err', text: '请填写模型 ID(可从模型页同步,或直接手输)' })
@@ -161,6 +163,12 @@ export default function TestPage() {
               请求 usage（stream_options.include_usage）
             </label>
           )}
+          {provider?.protocol === 'openai-chat' && (
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }} title="注入固定示例工具(calculate_sum 等),模型请求调用时本地执行并回传;白名单外一律拒绝">
+              <input type="checkbox" checked={toolsEnabled} onChange={(e) => setToolsEnabled(e.target.checked)} />
+              工具调用测试（固定示例工具,无副作用）
+            </label>
+          )}
         </div>
 
         <label className="field">提示词</label>
@@ -253,6 +261,55 @@ export function ResultPanel({ record }: { record: TestRunRecord }) {
           <h2>提取文本</h2>
           <div className="stream-box">{record.text}</div>
           {record.textTruncated && <div className="muted">（文本超过上限已截断）</div>}
+        </>
+      )}
+
+      {record.toolSteps && record.toolSteps.length > 0 && (
+        <>
+          <h2>
+            工具调用步骤 <span className="badge info">{record.toolSteps.length} 步 · {record.toolRounds ?? '?'} 轮</span>
+          </h2>
+          <table className="list">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>工具</th>
+                <th>模型给的参数 JSON</th>
+                <th>本地执行结果</th>
+                <th>状态</th>
+                <th>耗时</th>
+              </tr>
+            </thead>
+            <tbody>
+              {record.toolSteps.map((s) => (
+                <tr key={s.seq}>
+                  <td>{s.seq}</td>
+                  <td>
+                    <code style={{ fontSize: 12 }}>{s.toolName}</code>
+                  </td>
+                  <td>
+                    <pre className="code" style={{ margin: 0, maxHeight: 80 }}>{s.argumentsJson}</pre>
+                  </td>
+                  <td>
+                    {s.resultJson ? (
+                      <pre className="code" style={{ margin: 0, maxHeight: 80 }}>{s.resultJson}</pre>
+                    ) : (
+                      <span className="muted">{s.error}</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`badge ${s.status === 'ok' ? 'ok' : s.status === 'rejected' ? 'err' : 'warn'}`}>
+                      {s.status === 'ok' ? '成功' : s.status === 'rejected' ? '已拒绝' : '失败'}
+                    </span>
+                  </td>
+                  <td>{s.durationMs != null ? `${s.durationMs} ms` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="muted" style={{ marginTop: 4 }}>
+            仅白名单内的固定示例工具会被本地执行(纯函数,无网络/文件/命令);白名单外的调用一律拒绝并记录。
+          </div>
         </>
       )}
 

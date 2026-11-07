@@ -281,6 +281,63 @@ async function handleChat(req, res, body, keyOk, log) {
     return res.end()
   }
 
+  // 工具调用测试(P1):mock-tools 两轮行为
+  // 第 1 轮(无 tool 消息)→ 请求调用 calculate_sum(2,3);第 2 轮(有 tool 消息)→ 最终回答
+  if (model === 'mock-tools' && !stream) {
+    const msgs = Array.isArray(parsed.messages) ? parsed.messages : []
+    const toolMsg = msgs.find((m) => m.role === 'tool')
+    if (!toolMsg) {
+      return json(res, 200, {
+        id: `chatcmpl-tool-${Date.now().toString(36)}`,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_mock_1',
+                  type: 'function',
+                  function: { name: 'calculate_sum', arguments: '{"a":2,"b":3}' }
+                }
+              ]
+            },
+            finish_reason: 'tool_calls'
+          }
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 }
+      })
+    }
+    // 第 2 轮:回传结果后给最终答案
+    let toolContent = ''
+    try {
+      toolContent = String(JSON.parse(toolMsg.content).sum ?? '')
+    } catch {
+      toolContent = String(toolMsg.content ?? '')
+    }
+    return json(res, 200, {
+      id: `chatcmpl-tool-final-${Date.now().toString(36)}`,
+      object: 'chat.completion',
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: `工具调用链路验证成功:calculate_sum(2,3) = ${toolContent}。这是回传结果后的最终回答。`
+          },
+          finish_reason: 'stop'
+        }
+      ],
+      usage: { prompt_tokens: 30, completion_tokens: 20, total_tokens: 50 }
+    })
+  }
+
   // 正常模型（流式/非流式）
   if (stream) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })

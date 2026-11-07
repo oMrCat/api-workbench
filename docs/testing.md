@@ -141,6 +141,22 @@ export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-
 
 真实 Anthropic API:**未验证**(无真实 Key,同前述约定)。
 
+## P1:工具调用测试(已实现,仅 openai-chat 协议)
+
+**执行命令**:`npm test`(新增 11 项:单元 9 + 集成 2)+ `npm run uitest`(场景 S13b)
+
+**结果**:**130/130 自动化测试 + 22/22 UI 场景全部通过,真实执行**(2026-11-07)。
+
+设计(按需求的安全边界):
+- 仅两个**固定无副作用示例工具**:`calculate_sum`(纯计算)、`get_fixed_greeting`(固定文案)
+- 白名单唯一执行入口:未知工具名(含大小写/空格变体)一律拒绝并记录,不执行
+- 参数 JSON 严格解析,非对象/类型错误 → failed,不猜测
+- 工具实现为纯本地函数:无网络、无文件系统、无子进程、无任意代码执行
+- 每一步在 UI 表格展示:模型给的参数 JSON / 本地执行结果 / 状态(成功·已拒绝·失败)/ 耗时
+- 循环上限 3 轮;最终请求捕获包含完整消息历史(证据可导出)
+
+真实服务商的工具调用:**未验证**(无真实 Key)。
+
 ## CI 构建（Windows / macOS）
 
 **状态：✅ 已验证。** 仓库已推送 GitHub（https://github.com/oMrCat/api-workbench，private），

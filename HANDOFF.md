@@ -8,9 +8,10 @@
 
 - 远程：https://github.com/oMrCat/api-workbench（**private**，2026-11-07 推送，用户完成 gh 认证后授权推送）
 - CI（Build & Test）：**已实跑全绿**（run 42367661321）：双平台 103 项测试 + Windows NSIS + macOS DMG 产出，详见 `docs/testing.md`
-- ⚠️ 本地收敛事项：最后一条 docs 提交因 github.com 直连封锁改经 Git Data API 推送（走 api.github.com），
-  远程为 a47d30c6、本地为内容相同的平行提交 e5f967f。下次网络恢复后执行 `git pull --rebase`
-  （git 会自动跳过补丁相同的本地提交）即可收敛；收敛前**不要再在本地制造新提交**。
+- ⚠️ 本地收敛事项：GUI 修复(40ef321)与 Anthropic 适配器(b77ed5c)因 github.com 封锁改经 Git Data API
+  以**快照提交**推送（远程 c68f4426,内容与本地 HEAD 逐字节一致——blob 用 git hash-object 确定性生成）。
+  本地另有平行提交链(e5f967f→40ef321→b77ed5c)。网络恢复后执行 `git pull --rebase`
+  （三条补丁与快照逐一 patch-identical,会被自动跳过）即可收敛；收敛前**不要再在本地制造新提交**。
 - 本机网络对 github.com 主站间歇性封锁（api.github.com 通常可达）；git push 失败时等待或用上述 API 方式
 - git remote origin 已配置；后续提交直接 `git push`
 

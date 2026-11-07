@@ -7,13 +7,15 @@ import type {
   RunEvent,
   StreamEventLog,
   TestParams,
+  ToolCallStep,
   TestRunRecord
 } from '@shared/types'
-import type { ProtocolAdapter } from '../protocols/types'
+import type { NeutralMessage, ProtocolAdapter } from '../protocols/types'
 import { SseDecoder } from '../net/sse-parser'
 import { classifyFetchError, readStreamChunks, timedFetch, withDeadline } from '../net/http-client'
 import { redactCapturedRequest, redactText } from '../redact'
 import { diagnose } from '../diagnosis'
+import { executeToolCall, toolDefinitions } from '../tools/example-tools'
 
 const RAW_PREVIEW_CAP = 32 * 1024 // 原始响应预览上限
 const MAX_STREAM_EVENTS = 5000 // 流事件日志硬上限（防内存失控）
@@ -170,33 +172,102 @@ export class TestRunner {
       }
 
       if (!params.stream) {
-        // 非流式：读全文（受整体超时约束），按协议解析
-        const elapsed = performance.now() - started
-        const bodyText = await withDeadline(
-          response.text(),
-          Math.max(100, provider.timeoutMs - elapsed),
-          () => void response.body?.cancel().catch(() => {})
-        )
-        const parsed = adapter.parseNonStreamResponse(bodyText, response.status)
-        record.timing.totalMs = Math.round(performance.now() - started)
-        record.rawResponsePreview = bodyText.slice(0, RAW_PREVIEW_CAP)
-        record.rawTruncated = bodyText.length > RAW_PREVIEW_CAP
-        if (!parsed.ok) {
-          record.phase = 'parse'
-          record.errorMessage = parsed.error?.message ?? '响应解析失败'
-          record.diagnosis = diagnoseRecordShim(record)
-          emit({ type: 'status', runId, status: 'error' })
-          return finalize()
+        // 非流式:读全文(受整体超时约束),按协议解析;支持工具调用循环(P1)
+        const MAX_TOOL_ROUNDS = 3
+        const toolSteps: ToolCallStep[] = []
+        let messages: NeutralMessage[] | undefined
+        const tools = params.toolsEnabled ? toolDefinitions() : undefined
+        let round = 0
+        let currentResponse = response
+        for (;;) {
+          round++
+          const elapsed = performance.now() - started
+          const bodyText = await withDeadline(
+            currentResponse.text(),
+            Math.max(100, provider.timeoutMs - elapsed),
+            () => void currentResponse.body?.cancel().catch(() => {})
+          )
+          record.timing.totalMs = Math.round(performance.now() - started)
+          record.rawResponsePreview = bodyText.slice(0, RAW_PREVIEW_CAP)
+          record.rawTruncated = bodyText.length > RAW_PREVIEW_CAP
+          const parsed = adapter.parseNonStreamResponse(bodyText, response.status)
+          if (!parsed.ok) {
+            record.phase = 'parse'
+            record.errorMessage = parsed.error?.message ?? '响应解析失败'
+            record.diagnosis = diagnoseRecordShim(record)
+            emit({ type: 'status', runId, status: 'error' })
+            return finalize()
+          }
+          const wantsToolRound =
+            params.toolsEnabled && Boolean(parsed.toolCalls?.length) && round < MAX_TOOL_ROUNDS
+          if (!wantsToolRound) {
+            record.ok = true
+            record.phase = 'success'
+            record.text = parsed.text
+            record.textTruncated = parsed.textTruncated
+            record.usage = parsed.usage
+            record.toolRounds = round
+            if (toolSteps.length > 0) record.toolSteps = toolSteps
+            record.finishedAt = Date.now()
+            record.diagnosis = diagnoseRecordShim(record)
+            emit({ type: 'status', runId, status: 'done' })
+            return finalize()
+          }
+          // ---- 工具调用轮:校验白名单 → 本地执行 → 回传结果进入下一轮 ----
+          messages = messages ?? [{ role: 'user', text: params.prompt }]
+          messages.push({ role: 'assistant', text: parsed.text, toolCalls: parsed.toolCalls })
+          for (const tc of parsed.toolCalls!) {
+            const t0 = performance.now()
+            const exec = executeToolCall(tc.name, tc.argsJson)
+            toolSteps.push({
+              seq: toolSteps.length,
+              toolName: tc.name,
+              argumentsJson: tc.argsJson,
+              resultJson: exec.resultJson,
+              error: exec.error,
+              status: exec.status,
+              durationMs: Math.round(performance.now() - t0)
+            })
+            messages.push({
+              role: 'tool',
+              toolResult: { toolCallId: tc.id, content: exec.resultJson ?? exec.error ?? '' }
+            })
+          }
+          emit({
+            type: 'status',
+            runId,
+            status: 'headers-received',
+            detail: `工具循环:第 ${round} 轮 ${parsed.toolCalls!.length} 个调用已回传`
+          })
+          // 下一轮:重建请求(完整消息历史),更新捕获与脱敏
+          const nextBuilt = adapter.buildChatRequest(provider, apiKey, {
+            model: params.model,
+            prompt: params.prompt,
+            stream: false,
+            maxTokens: params.maxTokens,
+            temperature: params.temperature,
+            tools,
+            messages
+          })
+          captured.url = nextBuilt.url
+          captured.method = nextBuilt.method
+          captured.headers = { ...nextBuilt.headers }
+          captured.body = nextBuilt.body
+          record.request = redactCapturedRequest(captured, secrets.knownSecrets)
+          const next = await timedFetch(
+            nextBuilt.url,
+            { method: nextBuilt.method, headers: nextBuilt.headers, body: nextBuilt.body },
+            { timeoutMs: provider.timeoutMs, abortSignal: controller.signal }
+          )
+          record.timing.ttfbMs = record.timing.ttfbMs ?? next.ttfbMs
+          record.httpStatus = next.response.status
+          currentResponse = next.response
+          if (!next.response.ok) {
+            // 下一轮请求失败:错误体走同一解析路径(循环会经 parse 失败/成功路径收尾)
+            record.phase = 'response'
+            record.errorMessage = `HTTP ${next.response.status}(工具循环第 ${round + 1} 轮)`
+          }
         }
-        record.ok = true
-        record.phase = 'success'
-        record.text = parsed.text
-        record.textTruncated = parsed.textTruncated
-        record.usage = parsed.usage
-        record.finishedAt = Date.now()
-        record.diagnosis = diagnoseRecordShim(record)
-        emit({ type: 'status', runId, status: 'done' })
-        return finalize()
       }
 
       // 流式：检查 content-type，但不据此断言失败——很多兼容网关 content-type 不规范
