@@ -1,5 +1,5 @@
 // 请求测试页：P0 核心闭环
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TestParams, TestRunRecord } from '@shared/types'
 import { PROTOCOL_LABELS } from '@shared/types'
 import { useApp } from '../store'
@@ -32,6 +32,14 @@ export default function TestPage() {
     return c?.entries.map((m) => m.id) ?? []
   }, [catalogs, providerId])
 
+  // 服务商列表异步到达后,若尚未选中则默认选第一个(避免 state 停留在空串导致请求静默无效)
+  useEffect(() => {
+    if (!providerId && providers.length > 0) {
+      setProviderId(providers[0].id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers, providerId])
+
   if (providers.length === 0) {
     return (
       <div>
@@ -42,7 +50,11 @@ export default function TestPage() {
   }
 
   const send = async () => {
-    if (!provider || running) return
+    if (running) return
+    if (!provider) {
+      setToast({ kind: 'err', text: '服务商未就绪或未选择,请稍候再试' })
+      return
+    }
     const params: TestParams = {
       providerId: provider.id,
       model: model.trim(),
@@ -53,10 +65,12 @@ export default function TestPage() {
       streamIncludeUsage: stream && streamIncludeUsage ? true : undefined
     }
     if (!params.model) {
-      setToast({ kind: 'err', text: '请填写模型 ID（可从模型页同步，或直接手输）' })
+      setToast({ kind: 'err', text: '请填写模型 ID(可从模型页同步,或直接手输)' })
       return
     }
-    const runId = `run-${Date.now().toString(36)}`
+    // 预生成 runId 并随参数下发:主进程用同一 ID 记录运行,取消按钮按它匹配
+    const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    params.runId = runId
     runIdRef.current = runId
     startRun(runId)
     try {

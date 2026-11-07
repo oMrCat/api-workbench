@@ -6,11 +6,13 @@ import * as http from 'node:http'
 import { startMockServer, type MockHandle } from '../../mock-server/server.mjs'
 import { TestRunner } from '../../src/main/runner/test-runner'
 import { OpenAiChatAdapter } from '../../src/main/protocols/openai-chat'
+import { AnthropicMessagesAdapter } from '../../src/main/protocols/anthropic-messages'
 import type { ProviderConfig } from '@shared/types'
 
 let mock: MockHandle
 let base: string
 const adapter = new OpenAiChatAdapter()
+const anthropicAdapter = new AnthropicMessagesAdapter()
 const runner = new TestRunner({})
 
 const KEY = 'sk-mock-integration-test-key'
@@ -356,5 +358,107 @@ describe('模拟服务直连验证（场景 10 补充：非 JSON 请求体）', 
   it('未知路径 → 404', async () => {
     const r = await post('/unknown-path', '{}')
     expect(r.status).toBe(404)
+  })
+})
+
+// ---------- Anthropic Messages 协议(P1) ----------
+
+describe('Anthropic Messages 端到端(P1)', () => {
+  function anthropicProvider(patch: Partial<ProviderConfig> = {}): ProviderConfig {
+    return provider({ protocol: 'anthropic-messages', ...patch })
+  }
+
+  it('正常非流式:x-api-key 认证 + Anthropic 响应结构解析', async () => {
+    const r = await runner.run(
+      anthropicAdapter,
+      { providerId: 'mock-p', model: 'mock-chat-mini', stream: false, prompt: '你好', maxTokens: 64 },
+      anthropicProvider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    expect(r.ok).toBe(true)
+    expect(r.httpStatus).toBe(200)
+    expect(r.protocol).toBe('anthropic-messages')
+    expect(r.text).toContain('【模拟回复·Anthropic】')
+    expect((r.usage as { input_tokens: number }).input_tokens).toBeGreaterThan(0)
+    // 请求头脱敏:x-api-key 不泄漏
+    expect(r.request.headers['x-api-key']).toBe('***REDACTED***')
+    expect(JSON.stringify(r.request)).not.toContain(KEY)
+  })
+
+  it('正常流式:message_stop 结束 + usage 完整 + 增量文本', async () => {
+    const deltas: string[] = []
+    const live = new TestRunner({
+      onEvent: (ev) => {
+        if (ev.type === 'text-delta') deltas.push(ev.delta)
+      }
+    })
+    const r = await live.run(
+      anthropicAdapter,
+      { providerId: 'mock-p', model: 'mock-chat-streamer', stream: true, prompt: '测试', maxTokens: 64 },
+      anthropicProvider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    expect(r.ok).toBe(true)
+    expect(r.phase).toBe('success')
+    expect(deltas.length).toBeGreaterThan(0)
+    expect(deltas.join('')).toBe(r.text)
+    expect(r.streamEvents?.some((e) => e.data.includes('message_stop'))).toBe(true)
+    expect((r.usage as { output_tokens: number }).output_tokens).toBeGreaterThan(0)
+  }, 20000)
+
+  it('401(错误 x-api-key)→ Anthropic 错误体 + 认证诊断', async () => {
+    const r = await runner.run(
+      anthropicAdapter,
+      { providerId: 'mock-p', model: 'mock-chat-mini', stream: false, prompt: 'x', maxTokens: 64 },
+      anthropicProvider(),
+      'sk-wrong-anthropic-key',
+      { knownSecrets: ['sk-wrong-anthropic-key'] },
+      SETTINGS
+    )
+    expect(r.ok).toBe(false)
+    expect(r.httpStatus).toBe(401)
+    expect(r.errorBodyPreview).toContain('authentication_error')
+    expect(r.diagnosis?.possibleCauses.some((c) => c.cause.includes('API Key 无效'))).toBe(true)
+  })
+
+  it('协议缺 max_tokens → 模拟服务按真实 Anthropic 行为拒绝(400)', async () => {
+    // 绕过适配器(适配器会自动补 max_tokens),直接发原始请求验证模拟服务行为
+    const res = await fetch(`${base}/v1/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'mock-chat-mini', messages: [{ role: 'user', content: 'x' }], stream: false })
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error?: { type?: string } }
+    expect(body.error?.type).toBe('invalid_request_error')
+  })
+
+  it('用户取消(mock-slow Anthropic 慢流)→ 保留部分内容', async () => {
+    const live = new TestRunner({})
+    const p = live.run(
+      anthropicAdapter,
+      { providerId: 'mock-p', model: 'mock-slow', stream: true, prompt: '慢慢说', maxTokens: 64 },
+      anthropicProvider(),
+      KEY,
+      SECRETS,
+      SETTINGS
+    )
+    await new Promise((res) => setTimeout(res, 500))
+    live.cancelAll()
+    const r = await p
+    expect(r.cancelled).toBe(true)
+    expect(r.phase).toBe('cancelled')
+    expect(r.text).toContain('你好！这是 Anthropic 格式的流式模拟回复')
+  }, 20000)
+
+  it('模型目录:x-api-key 认证同步正常', async () => {
+    const res = await fetch(`${base}/v1/models`, { headers: { 'x-api-key': KEY } })
+    expect(res.status).toBe(200)
+    const r = anthropicAdapter.parseModelsResponse(await res.text())
+    expect(r.entries.length).toBeGreaterThan(5)
   })
 })

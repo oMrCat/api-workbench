@@ -12,6 +12,8 @@ import { IPC, providerConfigSchema, testParamsSchema, exportOptionsSchema, urlSc
 import { ConfigStore } from './store/config-store'
 import { SecretStore, type SafeStorageLike } from './store/secret-store'
 import { OpenAiChatAdapter } from './protocols/openai-chat'
+import { AnthropicMessagesAdapter } from './protocols/anthropic-messages'
+import type { ProtocolAdapter } from './protocols/types'
 import { TestRunner } from './runner/test-runner'
 import { classifyFetchError, timedFetch } from './net/http-client'
 import { plainHttpWarning } from '@shared/url'
@@ -24,10 +26,13 @@ let runner: TestRunner
 let mockChild: ChildProcess | null = null
 let mockPort = 0
 
-const CHAT_ADAPTERS = { 'openai-chat': new OpenAiChatAdapter() } as const
-function adapterFor(protocol: string) {
-  const a = (CHAT_ADAPTERS as Record<string, OpenAiChatAdapter | undefined>)[protocol]
-  if (!a) throw new Error(`暂不支持的协议：${protocol}（P1 计划中）`)
+const CHAT_ADAPTERS: Record<string, ProtocolAdapter> = {
+  'openai-chat': new OpenAiChatAdapter(),
+  'anthropic-messages': new AnthropicMessagesAdapter()
+}
+function adapterFor(protocol: string): ProtocolAdapter {
+  const a = CHAT_ADAPTERS[protocol]
+  if (!a) throw new Error(`暂不支持的协议：${protocol}`)
   return a
 }
 
@@ -183,7 +188,8 @@ function registerIpc(): void {
       provider,
       apiKey,
       { knownSecrets: secrets.allSecretValues() },
-      { streamLogLimit: settings.streamLogLimit, streamIdleTimeoutMs: settings.streamIdleTimeoutMs }
+      { streamLogLimit: settings.streamLogLimit, streamIdleTimeoutMs: settings.streamIdleTimeoutMs },
+      { runId: p.runId }
     )
     if (settings.persistHistory) {
       store.appendHistory([record], settings.historyLimit, true)
@@ -283,7 +289,10 @@ function registerIpc(): void {
 
   // ---------- 模拟服务管理 ----------
 
-  handle(IPC.MockStatus, () => ({ running: mockChild != null && mockChild.exitCode == null }))
+  handle(IPC.MockStatus, () => ({
+    running: mockChild != null && mockChild.exitCode == null,
+    port: mockChild && mockChild.exitCode == null ? mockPort : undefined
+  }))
 
   handle(IPC.MockStart, async () => {
     if (mockChild && mockChild.exitCode == null) {
@@ -299,7 +308,18 @@ function registerIpc(): void {
       stdio: ['ignore', 'pipe', 'pipe']
     })
     mockChild = child
-    child.on('exit', () => {
+    // 持续排空管道（防止子进程 console.log 因缓冲区满而阻塞），保留尾部用于诊断
+    const childLogTail: string[] = []
+    const drain = (stream: NodeJS.ReadableStream, label: string) => {
+      stream.on('data', (d: Buffer) => {
+        childLogTail.push(`[${label}] ${d.toString().trim()}`)
+        if (childLogTail.length > 50) childLogTail.shift()
+      })
+    }
+    drain(child.stdout!, 'mock.out')
+    drain(child.stderr!, 'mock.err')
+    child.on('exit', (code, signal) => {
+      console.log(`[mock] 子进程退出 code=${code} signal=${signal}\n${childLogTail.slice(-10).join('\n')}`)
       if (mockChild === child) mockChild = null
     })
     const port = await new Promise<number>((resolve, reject) => {
@@ -348,7 +368,7 @@ function createWindow(): void {
     minHeight: 640,
     title: 'API Workbench',
     backgroundColor: '#f5f5f7',
-    show: !app.commandLine.hasSwitch('smoke'), // 冒烟模式不弹窗干扰
+    show: !app.commandLine.hasSwitch('smoke'), // 冒烟模式不弹窗干扰(uitest 需要真实显示以截图)
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -532,6 +552,9 @@ app.whenReady().then(() => {
 
   if (app.commandLine.hasSwitch('smoke')) {
     void runSmokeTest()
+  }
+  if (app.commandLine.hasSwitch('uitest')) {
+    void import('./uitest').then((m) => m.runUiTest(win!))
   }
 })
 

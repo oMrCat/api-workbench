@@ -7,7 +7,11 @@
 **P0 全部完成（阶段 1-4 ✅），已推送远程仓库。**
 
 - 远程：https://github.com/oMrCat/api-workbench（**private**，2026-11-07 推送，用户完成 gh 认证后授权推送）
-- CI（Build & Test）：推送自动触发；Windows x64 / macOS arm64 打包与双平台测试矩阵的**实际运行结果**见 `docs/testing.md` 与 CI 页面
+- CI（Build & Test）：**已实跑全绿**（run 42367661321）：双平台 103 项测试 + Windows NSIS + macOS DMG 产出，详见 `docs/testing.md`
+- ⚠️ 本地收敛事项：最后一条 docs 提交因 github.com 直连封锁改经 Git Data API 推送（走 api.github.com），
+  远程为 a47d30c6、本地为内容相同的平行提交 e5f967f。下次网络恢复后执行 `git pull --rebase`
+  （git 会自动跳过补丁相同的本地提交）即可收敛；收敛前**不要再在本地制造新提交**。
+- 本机网络对 github.com 主站间歇性封锁（api.github.com 通常可达）；git push 失败时等待或用上述 API 方式
 - git remote origin 已配置；后续提交直接 `git push`
 
 ## 实测验收状态（2026-11-07，本机 + CI）

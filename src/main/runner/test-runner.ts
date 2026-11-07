@@ -61,9 +61,14 @@ export class TestRunner {
     provider: ProviderConfig,
     apiKey: string | undefined,
     secrets: RunSecrets,
-    settings: { streamLogLimit: number; streamIdleTimeoutMs: number }
+    settings: { streamLogLimit: number; streamIdleTimeoutMs: number },
+    opts?: { runId?: string }
   ): Promise<TestRunRecord> {
-    const runId = this.deps.newId?.() ?? `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    // 优先使用调用方(渲染进程)预生成的 runId,保证 UI 的取消按钮能按 ID 匹配
+    const runId =
+      opts?.runId ??
+      this.deps.newId?.() ??
+      `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const input = {
       model: params.model,
       prompt: params.prompt,

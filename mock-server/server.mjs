@@ -121,6 +121,18 @@ export function startMockServer(port = 0, log = () => {}) {
   server.on('clientError', (err, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n')
   })
+  // 默认 5s 的 keep-alive 空闲超时会与 undici 连接复用发生竞态
+  // （POST 不重试，恰好在关闭瞬间复用会得到 UND_ERR_SOCKET），延长之
+  server.keepAliveTimeout = 300000
+  server.headersTimeout = 310000
+  // 任何意外异常都留下痕迹再退出，绝不静默死亡
+  process.on('uncaughtException', (err) => {
+    console.error(`[mock] uncaughtException: ${err?.stack ?? err}`)
+    process.exit(1)
+  })
+  process.on('unhandledRejection', (err) => {
+    console.error(`[mock] unhandledRejection: ${err?.stack ?? err}`)
+  })
 
   return new Promise((resolve, reject) => {
     server.once('error', reject)
@@ -147,8 +159,11 @@ async function handle(req, res, log) {
   log(`${req.method} ${urlPath}`)
 
   // ---------- 模型目录 ----------
+  // 认证:OpenAI 风格 Bearer 或 Anthropic 风格 x-api-key 均接受(目录端点两种协议共用)
+  const anthropicKey = req.headers['x-api-key'] ?? ''
+  const keyOkAny = keyOk || (typeof anthropicKey === 'string' && anthropicKey.startsWith(VALID_KEY_PREFIX))
   if (req.method === 'GET' && urlPath.startsWith('/v1/models')) {
-    if (!keyOk) return json(res, 401, { error: { message: 'Invalid API key (mock)', code: 'invalid_api_key' } })
+    if (!keyOkAny) return json(res, 401, { error: { message: 'Invalid API key (mock)', code: 'invalid_api_key' } })
     if (urlPath === '/v1/models-empty') return json(res, 200, { object: 'list', data: [] })
     if (urlPath === '/v1/models-malformed') {
       return json(res, 200, {
@@ -176,6 +191,16 @@ async function handle(req, res, log) {
     req.on('data', (c) => (body += c))
     req.on('end', () => {
       void handleChat(req, res, body, keyOk, log)
+    })
+    return
+  }
+
+  // ---------- Anthropic Messages ----------
+  if (req.method === 'POST' && urlPath.includes('/messages')) {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => {
+      void handleAnthropic(req, res, body, log)
     })
     return
   }
@@ -243,10 +268,12 @@ async function handleChat(req, res, body, keyOk, log) {
   }
   if (model === 'mock-slow') {
     // 慢速流：每块 200ms，共 5 块（用于取消测试：用户可中途取消）
+    // 注意：只检查 res.destroyed。req.destroyed 在客户端(undici)完成请求体后会变 true,
+    // 与响应通道是否存活无关——误判会导致服务器中途放弃响应,客户端永久挂起。
     res.writeHead(200, { 'Content-Type': 'text/event-stream' })
     const parts = ['第一块', '第二块', '第三块', '第四块', '第五块']
     for (const p of parts) {
-      if (res.destroyed || req.destroyed) return
+      if (res.destroyed) return
       res.write(`data: ${JSON.stringify({ id: 'slow', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: p }, finish_reason: null }] })}\n\n`)
       await sleep(200)
     }
@@ -265,6 +292,102 @@ async function handleChat(req, res, body, keyOk, log) {
   // 非流式：轻微延迟模拟真实感
   await sleep(80)
   return json(res, 200, chatResponse(model, prompt))
+}
+
+// ---------- Anthropic Messages 处理 ----------
+/** Anthropic 流式事件序列 */
+function anthropicStreamEvents(model, prompt) {
+  const id = `msg_mock_${Date.now().toString(36)}`
+  const inputTokens = Math.ceil(prompt.length / 4)
+  return [
+    { event: 'message_start', data: { type: 'message_start', message: { id, type: 'message', role: 'assistant', model, usage: { input_tokens: inputTokens, output_tokens: 0 } } } },
+    { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '你好！这是 Anthropic 格式的流式模拟回复：葵花向阳☀️、テキスト、🎉。' } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '分块之间有 150ms 间隔,用于验证流式解析与取消。' } } },
+    { event: 'content_block_stop', data: { type: 'content_block_stop', index: 0 } },
+    { event: 'message_delta', data: { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 33 } } },
+    { event: 'message_stop', data: { type: 'message_stop' } }
+  ]
+}
+
+function anthropicSse(evts) {
+  return evts.map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('')
+}
+
+function anthropicNonStream(model, prompt) {
+  return {
+    id: `msg_mock_${Date.now().toString(36)}`,
+    type: 'message',
+    role: 'assistant',
+    model,
+    content: [{ type: 'text', text: `【模拟回复·Anthropic】模型 ${model} 已收到提示词(${prompt.length} 字符)。本条由本地模拟服务生成,未连接任何真实模型。` }],
+    stop_reason: 'end_turn',
+    usage: { input_tokens: Math.ceil(prompt.length / 4), output_tokens: 28 }
+  }
+}
+
+function anthropicError(res, status, type, message) {
+  return json(res, status, { type: 'error', error: { type, message } })
+}
+
+async function handleAnthropic(req, res, body, log) {
+  const key = req.headers['x-api-key'] ?? ''
+  if (!(typeof key === 'string' && key.startsWith(VALID_KEY_PREFIX))) {
+    return anthropicError(res, 401, 'authentication_error', 'invalid x-api-key (mock)。请使用以 sk-mock 开头的测试密钥。')
+  }
+  let parsed = {}
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return anthropicError(res, 400, 'invalid_request_error', '请求体不是 JSON(模拟服务)')
+  }
+  if (parsed.stream !== true && parsed.stream !== false) {
+    return anthropicError(res, 400, 'invalid_request_error', '缺少 stream 字段(模拟服务校验)')
+  }
+  if (typeof parsed.max_tokens !== 'number') {
+    // Anthropic 协议必填 max_tokens;模拟服务按真实行为拒绝
+    return anthropicError(res, 400, 'invalid_request_error', 'max_tokens: field required (Anthropic 协议必填)')
+  }
+  const model = String(parsed.model ?? '')
+  const prompt = String(parsed.messages?.[0]?.content ?? '')
+
+  // 与 OpenAI 端点同一套故障注入(错误体用 Anthropic 格式)
+  if (model === 'mock-403') return anthropicError(res, 403, 'permission_error', 'You are not allowed to access this model (mock).')
+  if (model === 'mock-404') return anthropicError(res, 404, 'not_found_error', `The model '${model}' does not exist (mock)`)
+  if (model === 'mock-429') {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '2' })
+    return res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: 'Rate limit exceeded (mock)' } }))
+  }
+  if (model === 'mock-500') return anthropicError(res, 500, 'api_error', 'Internal server error (mock upstream)')
+  if (model === 'mock-502') return anthropicError(res, 502, 'api_error', 'Bad gateway: upstream connector failed (mock)')
+  if (model === 'mock-nonjson') {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    return res.end('<html><body>我是一段网页而不是 JSON</body></html>')
+  }
+  if (model === 'mock-hang') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.write(' ')
+    await sleep(30000)
+    return res.destroy()
+  }
+  if (model === 'mock-slow') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+    for (const e of anthropicStreamEvents(model, prompt)) {
+      if (res.destroyed) return
+      res.write(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`)
+      await sleep(300)
+    }
+    return res.end()
+  }
+
+  if (parsed.stream) {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+    const sseText = anthropicSse(anthropicStreamEvents(model, prompt))
+    await writeSseSplit(res, sseText, Math.max(16, Math.floor(Buffer.byteLength(sseText, 'utf8') / 7)), 30)
+    return res.end()
+  }
+  await sleep(80)
+  return json(res, 200, anthropicNonStream(model, prompt))
 }
 
 // CLI 直接运行

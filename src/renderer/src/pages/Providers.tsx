@@ -6,7 +6,7 @@ import { useApp } from '../store'
 import { CopyButton, Empty } from '../components/common'
 import { joinUrl } from '@shared/url'
 
-const PROTOCOLS: ProtocolKind[] = ['openai-chat'] // P0；P1 增加 responses / anthropic
+const PROTOCOLS: ProtocolKind[] = ['openai-chat', 'anthropic-messages'] // openai-responses 为 P1 后续项
 
 function blankProvider(): ProviderConfig {
   return {
@@ -171,6 +171,15 @@ export default function ProvidersPage() {
       }
     })()
     const plainWarn = editing.baseUrl ? plainHttpWarn(editing.baseUrl) : null
+    // 客户端 URL 有效性（http/https），无效时禁止保存（主进程 zod 仍是最终防线）
+    const urlValid = (() => {
+      try {
+        const u = new URL(editing.baseUrl)
+        return u.protocol === 'http:' || u.protocol === 'https:'
+      } catch {
+        return false
+      }
+    })()
 
     return (
       <div className="panel">
@@ -305,7 +314,7 @@ export default function ProvidersPage() {
         <div className="muted">密钥等敏感参数不会出现在预览中。</div>
 
         <div className="row" style={{ marginTop: 16 }}>
-          <button className="primary" onClick={onSave} disabled={!editing.name || !editing.baseUrl}>
+          <button className="primary" onClick={onSave} disabled={!editing.name || !editing.baseUrl || !urlValid}>
             保存配置
           </button>
           <button className="secondary" onClick={() => setEditing(undefined)}>

@@ -174,6 +174,8 @@ export interface TestParams {
   temperature?: number
   /** openai 扩展：流式请求 usage（仅用户勾选时发送 stream_options.include_usage） */
   streamIncludeUsage?: boolean
+  /** 渲染进程预生成的运行 ID（取消请求时按此 ID 匹配）；缺省由主进程生成 */
+  runId?: string
 }
 
 /** 运行过程中推送给渲染进程的事件 */

@@ -50,6 +50,27 @@
 - 诊断规则引擎：unit/diagnosis 17 用例（含 502 不归因客户端、invalid_api_key 证据收敛、不确定性声明）✅
 - 流空闲超时、流事件日志上限：实现有防护代码；空闲超时路径由 mock-hang 的超时测试间接覆盖 ✅
 
+## GUI 交互深度测试(--uitest,21 场景)
+
+**执行命令**:`npm run uitest`(构建后无头驱动真实 DOM,截图存 /tmp/uitest/)
+
+**最近一次结果**:**21/21 场景通过,退出码 0,零子进程泄漏**,真实执行(2026-11-07)。
+
+覆盖:六页导航/空态、服务商表单校验(非法 URL 阻止保存)、密钥仅显示末 4 位、URL 预览无 /v1/v1、
+模型同步/搜索/手动添加、非流式与流式 UI 闭环、**取消按钮真实取消**、mock-500 诊断面板、
+防重复点击、curl 示例脱敏、历史单删/清空、设置保存还原、**960×640 最小窗口无横向溢出**、无内嵌 webview。
+
+**GUI 测试抓出并已修复的真实缺陷(每项都有回归覆盖):**
+
+| # | 缺陷 | 根因 | 修复 |
+| --- | --- | --- | --- |
+| 1 | 保存按钮对非法 URL 仍可点 | 仅靠主进程 zod 拦截 | 编辑器增加客户端 URL 有效性校验并禁用按钮 |
+| 2 | 测试页服务商未就绪时点击发送静默无效 | providerId 初始为空串,send 无提示 | providers 到达后自动选中默认项 + 发送前 toast 提示 |
+| 3 | **取消按钮永远无效** | UI 与 runner 各自生成 runId,取消按 ID 匹配永远落空(接口层测试未覆盖 UI 路径) | runId 由渲染进程预生成并经 TestParams 下发,runner 复用 |
+| 4 | **模拟服务子进程随应用退出泄漏**(孤儿进程累积,导致后续运行连接到死端口) | `app.exit()` 跳过 before-quit;uitest 未调用 mockStop | uitest/smoke 结束前显式 mockStop;删除测试数据 |
+| 5 | **mock-slow 流式响应第二个分块前被服务器放弃,客户端永久挂起** | 服务器误用 `req.destroyed` 判断客户端断开(undici 完成请求体后该值即变 true,与响应通道无关);curl 不触发、undici 触发 | 守卫只检查 `res.destroyed`;keepAliveTimeout 延长至 300s;未捕获异常留痕 |
+| 6 | mock 子进程 stdout 无人读取 | 管道缓冲写满会阻塞子进程 | 主进程持续排空并保留尾部日志,退出时输出原因 |
+
 ## 桌面冒烟测试
 
 **执行命令**：`npm run build && npx electron . --smoke`（构建产物运行，无头模式）
@@ -105,6 +126,20 @@ export ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-
 **状态：未验证。** 本环境无真实 API Key，按要求不将真实密钥提交到仓库或对话。
 用户可自行操作：启动应用 → 服务商页配置真实服务商与密钥 → 请求测试页发起。
 真实接口计费行为（usage 字段差异、4xx 响应体格式差异）可能与模拟服务有出入，遇问题请导出脱敏报告反馈。
+
+## P1:Anthropic Messages 协议(已实现)
+
+**执行命令**:`npm test`(新增 16 项:单元 10 + 集成 6)
+
+**结果**:119/119 全部通过,**真实执行**(2026-11-07)。覆盖:
+- 请求头正确性(x-api-key + anthropic-version,非 Bearer)
+- max_tokens 协议必填:未设置时补 1024;参数最小化
+- 流式事件解析(content_block_delta / message_start / message_delta / message_stop / error 事件)
+- 非流式 content 分段拼接与 type:"message" 结构校验(OpenAI 形态响应会被明确拒绝而非猜测)
+- 端到端:非流式/流式/401/取消/模型目录,经模拟服务 `/v1/messages`(x-api-key 认证 + 同套故障注入)
+- 诊断引擎增强:识别 Anthropic 风格 `authentication_error` / `invalid x-api-key` 证据
+
+真实 Anthropic API:**未验证**(无真实 Key,同前述约定)。
 
 ## CI 构建（Windows / macOS）
 

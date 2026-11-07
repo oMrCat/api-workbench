@@ -44,8 +44,8 @@
 
 ## P1（时间富余时）
 
-- [ ] openai-responses 适配器
-- [ ] anthropic-messages 适配器
+- [x] anthropic-messages 适配器(119/119 测试)
+- [ ] openai-responses 适配器(P1 下一个)
 - [ ] 工具调用测试（固定无副作用示例工具）
 - [ ] 多服务商结果对比
 - [ ] 性能测试（用户主动、并发 1 默认、可停止）

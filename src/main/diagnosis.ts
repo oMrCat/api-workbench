@@ -148,10 +148,17 @@ export function diagnose(input: RuleInput): Diagnosis {
   // ---- 响应体证据细分 ----
   const body = (input.errorBodyPreview || '').toLowerCase()
   if (body) {
-    if (body.includes('invalid_api_key') || body.includes('invalid api key') || body.includes('incorrect api key')) {
+    if (
+      body.includes('invalid_api_key') ||
+      body.includes('invalid api key') ||
+      body.includes('incorrect api key') ||
+      body.includes('authentication_error') ||
+      body.includes('invalid x-api-key')
+    ) {
       causes.length = 0
-      causes.push({ cause: 'API Key 无效（响应体明确指出 invalid_api_key）', likelihood: 'high' })
-      suggestions.push('重新在服务商页保存正确的 Key；注意不要包含多余空格或换行')
+      causes.push({ cause: 'API Key 无效(响应体明确指出认证错误)', likelihood: 'high' })
+      suggestions.push('重新在服务商页保存正确的 Key;注意不要包含多余空格或换行')
+      suggestions.push('确认协议类型与 Key 匹配:OpenAI 走 Authorization Bearer,Anthropic 走 x-api-key 头')
     }
     if (body.includes('quota') || body.includes('billing') || body.includes('insufficient')) {
       causes.push({ cause: '配额/计费问题（响应体提到 quota/billing）', likelihood: 'high' })
