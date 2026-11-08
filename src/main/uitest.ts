@@ -1,13 +1,16 @@
 // UI 交互测试装置(--uitest):用真实 DOM 事件驱动 React 界面,逐场景断言 + 截图。
 // 与 --smoke(走 window.api 接口层)互补,本文件验证的是**界面层**:
 // 表单、按钮、导航、流式渲染、取消按钮、布局缩放。
-// 运行:npm run build && electron . --uitest ;截图与报告输出到 /tmp/uitest/
+// 运行:npm run build && electron . --uitest ;截图与报告输出到系统临时目录下的 uitest/
+// (macOS: /tmp/uitest 或 $TMPDIR/uitest;Windows: %TEMP%\uitest —— 避免硬编码 /tmp
+//  在 Windows 上被解析为当前盘根 C:\tmp\uitest 污染盘根目录)
 
 import type { BrowserWindow } from 'electron'
 import * as fs from 'node:fs'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
-const OUT_DIR = '/tmp/uitest'
+const OUT_DIR = path.join(os.tmpdir(), 'uitest')
 
 interface UiScenarioResult {
   name: string
