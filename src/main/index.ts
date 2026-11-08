@@ -92,7 +92,7 @@ function registerIpc(): void {
   })
 
   handle(IPC.ProvidersExport, async (): Promise<ExportResult> => {
-    const payload = buildExportPayload(store, secrets.allSecretValues())
+    const payload = buildExportPayload(store, await secrets.allSecretValues())
     const { canceled, filePath } = await dialog.showSaveDialog(win!, {
       title: '导出服务商配置(不含密钥)',
       defaultPath: path.join(app.getPath('documents'), `api-workbench-providers-${Date.now()}.json`),
@@ -130,13 +130,13 @@ function registerIpc(): void {
 
   handle(IPC.SecretsStatus, () => secrets.getStatus())
 
-  handle(IPC.SecretSet, (_e, providerId: unknown, value: unknown) => {
+  handle(IPC.SecretSet, async (_e, providerId: unknown, value: unknown) => {
     if (typeof providerId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(providerId)) throw new Error('非法的服务商 ID')
     if (typeof value !== 'string' || value.length > 8192) throw new Error('非法的密钥值')
     return secrets.setSecret(providerId, value)
   })
 
-  handle(IPC.SecretGetPreview, (_e, providerId: unknown) => {
+  handle(IPC.SecretGetPreview, async (_e, providerId: unknown) => {
     if (typeof providerId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(providerId)) throw new Error('非法的服务商 ID')
     return secrets.getSecretPreview(providerId)
   })
@@ -151,7 +151,7 @@ function registerIpc(): void {
     const provider = store.getProvider(providerId)
     if (!provider) throw new Error('服务商不存在')
     const adapter = adapterFor(provider.protocol)
-    const apiKey = secrets.getSecret(providerId)
+    const apiKey = await secrets.getSecret(providerId)
     const built = adapter.buildModelsRequest(provider, apiKey)
     const startedAt = Date.now()
     try {
@@ -221,14 +221,14 @@ function registerIpc(): void {
     const provider = store.getProvider(p.providerId)
     if (!provider) throw new Error('服务商不存在')
     const adapter = adapterFor(provider.protocol)
-    const apiKey = secrets.getSecret(p.providerId)
+    const apiKey = await secrets.getSecret(p.providerId)
     const settings = store.getSettings()
     const record = await runner.run(
       adapter,
       p,
       provider,
       apiKey,
-      { knownSecrets: secrets.allSecretValues() },
+      { knownSecrets: await secrets.allSecretValues() },
       { streamLogLimit: settings.streamLogLimit, streamIdleTimeoutMs: settings.streamIdleTimeoutMs },
       { runId: p.runId, compareId: p.compareId, perfId: p.perfId }
     )
@@ -580,7 +580,10 @@ app.whenReady().then(async () => {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
     isAsyncEncryptionAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
     encryptString: (s) => safeStorage.encryptString(s),
-    decryptString: (b) => safeStorage.decryptString(b)
+    decryptString: (b) => safeStorage.decryptString(b),
+    // Electron 45+ 异步 API（同步版已弃用）；SecretStore 优先走这里
+    encryptStringAsync: (s) => safeStorage.encryptStringAsync(s),
+    decryptStringAsync: async (b) => (await safeStorage.decryptStringAsync(b)).result
   }
   secrets = new SecretStore(app.getPath('userData'), safeStorageLike)
   await secrets.probeAvailability() // 启动探测一次,避免后续触碰弃用的同步 API

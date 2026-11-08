@@ -124,66 +124,75 @@ function fakeSafeStorage(available: boolean, failEncrypt = false): SafeStorageLi
       const t = b.toString('utf-8')
       if (!t.startsWith('enc:')) throw new Error('bad data')
       return t.slice(4)
+    },
+    encryptStringAsync: async (s2: string) => {
+      if (failEncrypt) throw new Error('encrypt failed (fake)')
+      return Buffer.from(`enc:${s2}`, 'utf-8')
+    },
+    decryptStringAsync: async (b: Buffer) => {
+      const t = b.toString('utf-8')
+      if (!t.startsWith('enc:')) throw new Error('bad data')
+      return t.slice(4)
     }
   }
 }
 
 describe('密钥安全存储（场景 18：安全存储不可用时的行为）', () => {
-  it('系统安全存储可用 → 加密落盘，重启可解密', () => {
+  it('系统安全存储可用 → 加密落盘，重启可解密', async () => {
     const s1 = new SecretStore(tmp, fakeSafeStorage(true))
     expect(s1.getStatus().mode).toBe('system')
-    s1.setSecret('p1', 'sk-test-123456')
-    expect(s1.getSecret('p1')).toBe('sk-test-123456')
+    await s1.setSecret('p1', 'sk-test-123456')
+    expect(await s1.getSecret('p1')).toBe('sk-test-123456')
     // 文件中不出现明文
     const raw = fs.readFileSync(path.join(tmp, 'secrets.json'), 'utf-8')
     expect(raw).not.toContain('sk-test-123456')
     expect(raw).toContain('"enc":') // 密文条目存在（值为 base64）
     // 重启恢复
     const s2 = new SecretStore(tmp, fakeSafeStorage(true))
-    expect(s2.getSecret('p1')).toBe('sk-test-123456')
-    expect(s2.getSecretPreview('p1').preview).toBe('••••3456')
+    expect(await s2.getSecret('p1')).toBe('sk-test-123456')
+    expect((await s2.getSecretPreview('p1')).preview).toBe('••••3456')
   })
 
-  it('安全存储不可用 → 仅会话内存，不写盘，明确告知', () => {
+  it('安全存储不可用 → 仅会话内存，不写盘，明确告知', async () => {
     const s = new SecretStore(tmp, fakeSafeStorage(false))
     const status = s.getStatus()
     expect(status.mode).toBe('session-only')
     expect(status.reason).toContain('仅保存在当前会话内存')
-    s.setSecret('p1', 'sk-session-only-key')
-    expect(s.getSecret('p1')).toBe('sk-session-only-key')
+    await s.setSecret('p1', 'sk-session-only-key')
+    expect(await s.getSecret('p1')).toBe('sk-session-only-key')
     // 不应生成 secrets.json
     expect(fs.existsSync(path.join(tmp, 'secrets.json'))).toBe(false)
   })
 
-  it('safeStorage 缺失（非 Electron 环境）→ 降级为会话内存', () => {
+  it('safeStorage 缺失（非 Electron 环境）→ 降级为会话内存', async () => {
     const s = new SecretStore(tmp, undefined)
     expect(s.getStatus().mode).toBe('session-only')
-    s.setSecret('p1', 'abc123456789')
-    expect(s.getSecret('p1')).toBe('abc123456789')
+    await s.setSecret('p1', 'abc123456789')
+    expect(await s.getSecret('p1')).toBe('abc123456789')
   })
 
-  it('加密失败 → 返回明确错误，不静默明文持久化', () => {
+  it('加密失败 → 返回明确错误，不静默明文持久化', async () => {
     const s = new SecretStore(tmp, fakeSafeStorage(true, true))
-    const r = s.setSecret('p1', 'sk-fail-case')
+    const r = await s.setSecret('p1', 'sk-fail-case')
     expect(r.ok).toBe(false)
     expect(r.error).toContain('加密保存失败')
     expect(fs.existsSync(path.join(tmp, 'secrets.json'))).toBe(false)
   })
 
-  it('删除密钥同时清理内存与文件', () => {
+  it('删除密钥同时清理内存与文件', async () => {
     const s = new SecretStore(tmp, fakeSafeStorage(true))
-    s.setSecret('p1', 'sk-del-me')
+    await s.setSecret('p1', 'sk-del-me')
     s.deleteSecret('p1')
-    expect(s.getSecret('p1')).toBeUndefined()
+    expect(await s.getSecret('p1')).toBeUndefined()
     expect(Object.keys(s['readFile']().entries)).toHaveLength(0)
   })
 
-  it('allSecretValues 覆盖内存与系统两条路径（脱敏输入）', () => {
+  it('allSecretValues 覆盖内存与系统两条路径（脱敏输入）', async () => {
     const s1 = new SecretStore(tmp, fakeSafeStorage(true))
-    s1.setSecret('p1', 'sk-system-key-1')
+    await s1.setSecret('p1', 'sk-system-key-1')
     const s2 = new SecretStore(tmp, undefined)
-    s2.setSecret('p2', 'sk-memory-key-2')
-    expect(s2.allSecretValues()).toContain('sk-memory-key-2')
-    expect(s1.allSecretValues()).toContain('sk-system-key-1')
+    await s2.setSecret('p2', 'sk-memory-key-2')
+    expect(await s2.allSecretValues()).toContain('sk-memory-key-2')
+    expect(await s1.allSecretValues()).toContain('sk-system-key-1')
   })
 })

@@ -173,6 +173,7 @@ export function buildCurlSample(record: TestRunRecord): string {
     '# 脱敏 curl 复现示例（生成的命令不含真实密钥）',
     '# ⚠️ 运行前必须把 $API_WORKBENCH_KEY 占位符替换为你的真实密钥；',
     '# ⚠️ 在共享终端/聊天窗口运行时注意 shell 历史记录也会保存密钥。',
+    '# ⚠️ 本示例为 POSIX shell（bash/zsh）语法：Windows cmd 请把单引号改为双引号，或改用 PowerShell / Git Bash 运行。',
     '',
     'curl -i \\',
     `  '${record.request.url}' \\`,

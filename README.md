@@ -86,7 +86,7 @@ npm run dist:mac    # macOS arm64 dmg 打包
 - 渲染进程：sandbox + contextIsolation + CSP（connect-src 'none'），无 Node 能力，无网络能力
 - 主进程：zod 校验全部 IPC 参数；网络请求统一经主进程；TLS 校验不可关闭
 - 密钥：safeStorage 加密存储；脱敏发生在记录捕获点；导出前二次提示
-- 数据：全部存于系统用户数据目录（macOS `~/Library/Application Support/api-workbench`，Windows `%APPDATA%/api-workbench`），无写死路径
+- 数据：全部存于系统用户数据目录（macOS `~/Library/Application Support/API Workbench`，Windows `%APPDATA%\API Workbench`，以 productName 命名），无写死路径
 
 ## 许可
 

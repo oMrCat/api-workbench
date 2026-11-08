@@ -11,6 +11,9 @@ export interface SafeStorageLike {
   isAsyncEncryptionAvailable?(): Promise<boolean>
   encryptString(plain: string): Buffer
   decryptString(encrypted: Buffer): string
+  /** Electron 45+ 的异步 API（同步版已弃用）；旧环境/测试桩可不提供，实现内自动回退同步版 */
+  encryptStringAsync?(plain: string): Promise<Buffer>
+  decryptStringAsync?(encrypted: Buffer): Promise<string>
 }
 
 interface StoredEntry {
@@ -100,12 +103,25 @@ export class SecretStore {
     return this.statusCache
   }
 
-  setSecret(providerId: string, value: string): { ok: boolean; error?: string } {
+  /** 优先使用 Electron 45+ 异步 API（同步版已弃用会打告警）；无异步实现时回退同步版 */
+  private async encryptValue(plain: string): Promise<Buffer> {
+    const s = this.safeStorage
+    if (s?.encryptStringAsync) return s.encryptStringAsync(plain)
+    return Promise.resolve(s!.encryptString(plain))
+  }
+
+  private async decryptValue(encrypted: Buffer): Promise<string> {
+    const s = this.safeStorage
+    if (s?.decryptStringAsync) return s.decryptStringAsync(encrypted)
+    return Promise.resolve(s!.decryptString(encrypted))
+  }
+
+  async setSecret(providerId: string, value: string): Promise<{ ok: boolean; error?: string }> {
     if (!value) return this.deleteSecret(providerId)
     const status = this.getStatus()
     if (status.mode === 'system' && this.safeStorage) {
       try {
-        const enc = this.safeStorage.encryptString(value)
+        const enc = await this.encryptValue(value)
         const f = this.readFile()
         f.entries[providerId] = { enc: enc.toString('base64'), updated: Date.now() }
         this.writeFile(f)
@@ -120,7 +136,7 @@ export class SecretStore {
     return { ok: true }
   }
 
-  getSecret(providerId: string): string | undefined {
+  async getSecret(providerId: string): Promise<string | undefined> {
     if (this.memoryKeys.has(providerId)) return this.memoryKeys.get(providerId)
     const status = this.getStatus()
     if (status.mode !== 'system' || !this.safeStorage) return undefined
@@ -128,7 +144,7 @@ export class SecretStore {
     const entry = f.entries[providerId]
     if (!entry?.enc) return undefined
     try {
-      return this.safeStorage.decryptString(Buffer.from(entry.enc, 'base64'))
+      return await this.decryptValue(Buffer.from(entry.enc, 'base64'))
     } catch {
       return undefined // 解密失败视为无密钥（如系统用户变更）
     }
@@ -145,9 +161,9 @@ export class SecretStore {
   }
 
   /** 展示用预览：只返回末 4 位，供 UI 确认"已保存" */
-  getSecretPreview(providerId: string): { exists: boolean; preview?: string; source: 'memory' | 'system' | 'none' } {
+  async getSecretPreview(providerId: string): Promise<{ exists: boolean; preview?: string; source: 'memory' | 'system' | 'none' }> {
     const inMemory = this.memoryKeys.has(providerId)
-    const value = this.getSecret(providerId)
+    const value = await this.getSecret(providerId)
     if (!value) return { exists: false, source: 'none' }
     return {
       exists: true,
@@ -157,12 +173,12 @@ export class SecretStore {
   }
 
   /** 收集所有已知密钥值（脱敏用）。仅会话内使用，不落日志。 */
-  allSecretValues(): string[] {
+  async allSecretValues(): Promise<string[]> {
     const values = [...this.memoryKeys.values()]
     const f = this.readFile()
     if (this.getStatus().mode === 'system' && this.safeStorage) {
       for (const id of Object.keys(f.entries)) {
-        const v = this.getSecret(id)
+        const v = await this.getSecret(id)
         if (v) values.push(v)
       }
     }
