@@ -4,10 +4,9 @@
 
 ## 平台与打包
 
-0a. **Release 的 Windows 包为免安装 zip(NSIS 安装器仅在 CI Artifacts)**
-   - 位置:本地 `npm run dist:win` 的 NSIS 步骤失败——makensis 为 x86_64 二进制,Apple M1(无 Rosetta)报 error -86
-   - 影响:Release 页提供 win-unpacked 免安装 zip(解压运行 `API Workbench.exe`);NSIS 安装包需从 CI Artifacts 下载(需登录 GitHub)
-   - 建议:安装 Rosetta(`softwareupdate --install-rosetta --agree-to-license`)后本地可产 NSIS;或直接用 CI 产物
+0a. **~~Release 的 Windows 包为免安装 zip~~（已解决 2026-11-08）**
+   - 原因:macOS 本地产 NSIS 失败(makensis x86_64 需 Rosetta)
+   - 解决:已在 Windows 11 真机执行 `npm run dist:win` 成功产出 `API Workbench Setup 0.1.0.exe`,并已上传至 Release
 0b. **safeStorage 弃用告警已消除**:探测改用 `isAsyncEncryptionAvailable`(Electron 45 新 API),旧版本回退同步 API
 
 0. **网络受限环境需配置镜像**
@@ -15,11 +14,11 @@
    - 影响：GitHub 直连超时时，安装依赖/打包失败（fetch failed / ETIMEDOUT）。
    - 复现：在 GitHub 受限网络执行 `npm ci` 或 `npm run dist:mac`。
    - 修复：设置环境变量 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 与 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`（GitHub Actions 环境无需此步）。
-1. **Windows 真机安装体验未验证**（更新于 CI 产物冒烟通过后）
-   - 位置：CI 已在每次 push 时对 `win-unpacked/API Workbench.exe` 实际运行 `--smoke`（run 42380537460 起,9 步全过）——**安装产物能否运行已自动化实测**；双平台全部测试亦在 CI 真实执行。
-   - 影响：仅剩"NSIS 安装器双击安装体验"未在真机验证（含 Smartscreen 未签名提示、开始菜单/桌面快捷方式）。
-   - 复现：无 Windows 真机/虚拟机。
-   - 建议：从 Actions Artifacts 下载安装包,在 Windows 10/11 x64 安装实测;未签名会有"更多信息 → 仍要运行"提示。
+1. ~~**Windows 真机安装体验未验证**~~（✅ 已验证 2026-11-08，Windows 11 x64 真机）
+   - vitest 157/157 全绿（Windows runner 与本机一致）；`npm run smoke` 9/9；`npm run uitest` 24 场景全过。
+   - **NSIS 安装器真机安装/卸载实测通过**：per-user 装至 `%LOCALAPPDATA%\Programs\API Workbench`（无 UAC）；未签名有 SmartScreen「更多信息 → 仍要运行」提示（预期行为）；开始菜单/桌面快捷方式正常生成；卸载后程序/快捷方式/注册表项全部清除、userData 按惯例保留。
+   - 实测发现并修复：uitest 截图目录硬编码 `/tmp/uitest` 在 Windows 落盘根 `C:	mp`（已改 `os.tmpdir()`）。
+   - 数据目录实测为 `%APPDATA%\API Workbench`（productName；旧文档写的 `api-workbench` 不存在）。
 2. **macOS 包未签名未公证**
    - 位置：`electron-builder.yml`（`identity: null`）
    - 影响：其他机器首次打开需右键 → 打开绕过 Gatekeeper（本机 ad-hoc 可直接运行）。

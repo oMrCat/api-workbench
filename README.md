@@ -29,7 +29,7 @@
 - ✅ 报告导出：Markdown / JSON，默认脱敏（Authorization/Key/Cookie/敏感头/URL 参数/已知密钥串），默认不含提示词正文，包含时二次确认
 - ✅ 脱敏 curl 复现示例（占位符，不含真实密钥）
 - ✅ 内置模拟服务（一键启动，无 Key 也能测全部流程）
-- ✅ 103 项自动化测试（单元 + 集成，离线运行）
+- ✅ 157 项自动化测试（单元 + 集成，离线运行；已在 Windows 11 真机全绿）
 
 **P1 已全部完成**:Anthropic Messages ✓、OpenAI Responses ✓、工具调用测试 ✓、多服务商对比 ✓、性能测试 ✓、配置导出导入 ✓。
 
@@ -49,7 +49,7 @@ npm run dev     # 终端 B：启动桌面应用
 
 ```bash
 npm run typecheck   # 类型检查
-npm test            # 103 项自动化测试
+npm test            # 157 项自动化测试
 npm run smoke       # 桌面冒烟测试（无头执行，退出码 0 = 通过）
 npm run dist:mac    # macOS arm64 dmg 打包
 ```

@@ -21,7 +21,7 @@ The result panel shows `上游未返回 / not returned`. The performance summary
 
 ## Known issues (highlights — full list in repo `docs/known-issues.md`)
 
-1. **Windows installer UX untested on a real machine** — the exe itself is smoke-tested in CI on every push; only the NSIS double-click experience (Smartscreen, shortcuts) needs a real machine.
+1. ~~**Windows installer UX untested on a real machine**~~ ✅ Verified on Windows 11 x64 (2026-11-08): full NSIS install/uninstall cycle passed (per-user, no UAC; SmartScreen unsigned warning expected; shortcuts OK; clean uninstall); uitest screenshot dir moved to `os.tmpdir()` (the hardcoded `/tmp/uitest` landed on `C:	mp` on Windows).
 2. **Unsigned builds** — macOS: right-click → Open on other machines; Windows: Smartscreen "More info → Run anyway". Needs a developer certificate to fix.
 3. **npm audit warnings** — not force-fixed to avoid breaking the locked dependency tree.
 4. **Stream event log caps at 200 entries** (configurable) — full response text is unaffected; protects memory on huge streams.
